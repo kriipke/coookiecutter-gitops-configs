@@ -1,0 +1,84 @@
+global:
+  appName: wager-service
+
+image:
+  repository: eksa-mdt-harbor.lotteryplus.com/drawservices/wagerservice
+
+mapping:
+  host: wager-svc-tst.lotteryplus.com
+
+newRelic:
+  appName: wager-service-tst
+  tags:
+    environment: tst
+
+resources:
+  limits:
+    # -- CPU limit for the container
+    cpu: "2"
+    # -- Memory limit for the container
+    memory: "4G"
+  requests:
+    # -- CPU request for the container
+    cpu: "2"
+    # -- Memory request for the container
+    memory: "2G"
+
+autoscaling:
+  # -- Enable Horizontal Pod Autoscaler ([HPA]) for the Argo CD server
+  enabled: true
+  # -- Minimum number of replicas for the Argo CD server [HPA]
+  minReplicas: 1
+  # -- Maximum number of replicas for the Argo CD server [HPA]
+  maxReplicas: 5
+  # -- Average CPU utilization percentage for the Argo CD server [HPA]
+  targetCPUUtilizationPercentage: 50
+  # -- Average memory utilization percentage for the Argo CD server [HPA]
+  targetMemoryUtilizationPercentage: 50
+  # -- Configures the scaling behavior of the target in both Up and Down directions.
+  behavior: {}
+    # scaleDown:
+    #  stabilizationWindowSeconds: 300
+    #  policies:
+    #   - type: Pods
+    #     value: 1
+    #     periodSeconds: 180
+    # scaleUp:
+    #   stabilizationWindowSeconds: 300
+    #   policies:
+    #   - type: Pods
+    #     value: 2
+    #     periodSeconds: 60
+  # -- Configures custom HPA metrics for the Argo CD server
+  # Ref: https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/
+  
+
+vaultConnectionStrings:
+  appRoleId: 302d8093-c61f-1258-902d-8a1613c4a55b
+  appRoleSecret: f13d8de7-abd1-2a9f-48af-49efb6003106
+  path: kubernetes/mdt/uat/drawservices/wager-service
+  vaultNamespace: "admin/sg-pail-eksa"
+
+  
+configMapName: env-vars-wagerservice
+config:
+  BodyLimit: "200000"
+  CheckSettingsDirtyCacheTime: "60000"
+  DatabaseProviderName: Microsoft.Data.SqlClient
+  DefaultWagerSubmissionType__PA: ""
+  EmailServiceProvider__PA: sendgrid
+  GamePlayDBNameSuffix: ""
+  GoogleGeoCode: ""
+  GoogleGeoCodeAppKey: ""
+  Log4netLogLevel: ERROR
+  LogURLExcludeList: ""
+  MaxLogExchangeCountPer: "50"
+  NEW_RELIC_APP_NAME: wager-service-uat1
+  SubmitWagerTime: "false"
+  TLSVersion: "3072"
+  Timing: "false"
+  UseDataConsumerMock: "false"
+  UseTestData: "false"
+  ValidDrawDateFormat: yyyy-MM-dd
+  WalletService: UWallet
+  WalletService__PA: UWallet

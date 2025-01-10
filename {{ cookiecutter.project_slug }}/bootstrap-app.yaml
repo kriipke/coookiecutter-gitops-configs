@@ -1,0 +1,17 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: bootstrap
+spec:
+  destination:
+    name: 'in-cluster'
+    namespace: 'argo'
+  project: default
+  source:
+    path: bootstrap/
+    repoURL: ssh://git@github.com/{{ cookiecutter.repo_appsets }}
+    targetRevision: {{ cookiecutter.repo_appsets_branch }}
+    directory:
+      recurse: true
+  syncPolicy:
+    automated: {}

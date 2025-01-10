@@ -1,0 +1,5 @@
+default_context:
+    platform: PLATFORM_NAME
+abbreviations:
+    gh: https://github.com/{0}.git
+    bb: https://bitbucket.org/{0}

@@ -1,0 +1,20 @@
+documentation:
+- changed-files:
+  - any-glob-to-any-file: 'docs/*'
+  - any-glob-to-any-file: '**/*.md'
+  - any-glob-to-any-file: '**/*.adoc'
+appset-addons:
+- changed-files:
+  - any-glob-to-any-file: 'bootstrap/appset-addons.yaml'
+appset-drawservices:
+- changed-files:
+  - any-glob-to-any-file: 'bootstrap/appset-drawservices.yaml'
+workflows:
+- changed-files:
+  - any-glob-to-any-file: '.github/*'
+eksa-uat-dw01:
+- changed-files:
+  - any-glob-to-any-file: 'clusters/eksa-uat-dw01/*'
+eksa-uat-pw01:
+- changed-files:
+  - any-glob-to-any-file: 'clusters/eksa-uat-pw01/*'

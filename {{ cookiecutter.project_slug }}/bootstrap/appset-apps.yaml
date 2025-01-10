@@ -1,0 +1,68 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: drawservices
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  syncPolicy:
+    preserveResourcesOnDeletion: true
+    automated:
+      prune: true
+      heal: true
+  generators:
+    - matrix:
+        generators:
+          - list:
+              elements:
+              - appName: winnerservice
+                releaseName: winnerservice-uat
+                targetRevision: winner-service-0.2.16
+                environment: uat
+              - appName: winnerservice
+                releaseName: winnerservice-tst
+                targetRevision: winner-service-0.2.16
+                environment: tst
+              - appName: wagerservice
+                releaseName: wagerservice-uat
+                targetRevision: wager-service-0.2.1
+                environment: uat
+              - appName: wagerservice
+                releaseName: wagerservice-tst
+                targetRevision: wager-service-0.2.1
+                environment: tst
+              - appName: taskmanager
+                releaseName: taskmanager-uat
+                targetRevision: taskmanager-0.0.8
+                environment: uat
+          - clusters:
+              selector:
+                matchExpressions:
+                - {key: 'argo-cd-cluster-name', operator: In, values: [cluster-a]}
+  template:
+    metadata:
+      name: 'app-{{ "{{" }}.appName{{ "}}" }}-{{ "{{" }}.environment{{ "}}" }}-{{ "{{" }}index .metadata.labels "argo-cd-cluster-name"{{ "}}" }}'
+    spec:
+      project: default
+      sources:
+      - repoURL: 'ssh://git@github.com/{{ cookiecutter.repo_appsets }}'
+        targetRevision: {{ cookiecutter.repo_appsets_branch }}
+        ref: values
+      - repoURL: 'ssh://git@github.com/{{ cookiecutter.repo_charts }}'
+        path: 'charts/{{ "{{" }}.appName{{ "}}" }}'
+        targetRevision: '{{ "{{" }}.targetRevision{{ "}}" }}'
+        helm:
+          releaseName: '{{ "{{" }}.releaseName{{ "}}" }}'
+          ignoreMissingValueFiles: false
+          valueFiles:
+          - '$values/clusters/{{ "{{" }}index .metadata.labels "argo-cd-cluster-name"{{ "}}" }}/applications/{{ "{{" }}.environment{{ "}}" }}-{{ "{{" }}.appName{{ "}}" }}.yaml'
+      destination:
+        namespace: '{{ "{{" }}.environment{{ "}}" }}-targetns'
+        name: '{{ "{{" }}.name{{ "}}" }}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true  # Big CRDs.

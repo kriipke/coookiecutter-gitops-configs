@@ -1,0 +1,20 @@
+= {{ cookiecutter.project_name }}: {{ cookiecutter.platform_name }}
+
+This is the **single source of truth** for the Kubernetes cluster configuration for PA iLottery deployment.
+
+It is hosted at:
+
+https://github.com/sg-gitops/{{ cookiecutter.repo_appsets }}
+
+== Helm Charts
+
+This GitOps configuration repository sources its Helm Charts from the following repository:
+
+https://github.com/{{ cookiecutter.repo_charts }}
+
+These two repositories in tandum manage the configuration of the PA iLottery platform in:
+
+- Dev
+- QA 
+- UAT
+- Prod

@@ -1,0 +1,12 @@
+{
+  "platform_name": "MyPlatform",
+  "project_name": "GitOps Configs: AppSets",
+  "project_slug": "{{ cookiecutter.project_name.lower().replace(':', '').replace(' ', '_') }}",
+  "repo_appsets": "kriipke/demo-gitops-appsets",
+  "repo_appsets_branch": "main",
+  "repo_charts": "kriipke/demo-gitops-charts",
+  "author": "Spencer Smolen",
+  "_copy_without_rener": [
+      "bootstrap/*"
+  ]
+}

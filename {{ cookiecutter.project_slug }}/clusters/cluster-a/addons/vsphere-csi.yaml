@@ -1,0 +1,10 @@
+clusterId: "cluster-a"
+vaultSecretsOperator:
+  # -- Vault path to fetch secret from
+  path: "kubernetes/mdt/vsphere-csi"
+  # -- AppRole ID for Vault authentication
+  appRoleId: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+  # -- AppRole Secret for Vault authentication
+  appRoleSecret: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+  # -- Type of the Vault secrets engine
+  refreshAfter: 10s

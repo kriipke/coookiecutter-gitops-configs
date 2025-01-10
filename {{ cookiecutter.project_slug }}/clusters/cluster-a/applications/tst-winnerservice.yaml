@@ -1,0 +1,93 @@
+global:
+  appName: winner-service
+
+image:
+  repository: eksa-mdt-harbor.lotteryplus.com/drawservices/winnerservice
+
+mapping:
+  host: win-svc-tst.lotteryplus.com
+
+newRelic:
+  appName: winner-service-tst
+  tags:
+    environment: tst
+
+resources:
+  limits:
+    # -- CPU limit for the container
+    cpu: "2"
+    # -- Memory limit for the container
+    memory: "4G"
+  requests:
+    # -- CPU request for the container
+    cpu: "2"
+    # -- Memory request for the container
+    memory: "2G"
+
+autoscaling:
+  # -- Enable Horizontal Pod Autoscaler ([HPA]) for the Argo CD server
+  enabled: true
+  # -- Minimum number of replicas for the Argo CD server [HPA]
+  minReplicas: 1
+  # -- Maximum number of replicas for the Argo CD server [HPA]
+  maxReplicas: 5
+  # -- Average CPU utilization percentage for the Argo CD server [HPA]
+  targetCPUUtilizationPercentage: 50
+  # -- Average memory utilization percentage for the Argo CD server [HPA]
+  targetMemoryUtilizationPercentage: 50
+  # -- Configures the scaling behavior of the target in both Up and Down directions.
+  behavior: {}
+    # scaleDown:
+    #  stabilizationWindowSeconds: 300
+    #  policies:
+    #   - type: Pods
+    #     value: 1
+    #     periodSeconds: 180
+    # scaleUp:
+    #   stabilizationWindowSeconds: 300
+    #   policies:
+    #   - type: Pods
+    #     value: 2
+    #     periodSeconds: 60
+  # -- Configures custom HPA metrics for the Argo CD server
+  # Ref: https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/
+  
+
+vaultConnectionStrings:
+  appRoleId: 5b7c4ebc-ef63-2245-21fd-53563146b366
+  appRoleSecret: 034a5ad0-62d0-2435-a325-eda7da697c9a
+  path: kubernetes/mdt/tst/drawservices/winner-service
+  vaultNamespace: "admin/sg-pail-eksa"
+
+vaultNewRelic:
+  # -- Name of the Vault authentication role for New Relic
+  name: newrelic
+  # -- AppRole ID for Vault authentication
+  appRoleId: 3d96fd2b-959d-5951-ce04-537f0946e076
+  # -- AppRole Secret for Vault authentication
+  appRoleSecret: 30b277c6-46e6-0351-62ed-30d8ebe8c853
+  # -- Vault namespace for New Relic
+  vaultNamespace: admin/sg-is-devops
+  type: kv-v2
+  # -- Path in Vault where the secret is stored
+  mount: secrets
+  # -- Type of the Vault secrets engine
+  path: newrelic-license
+  # -- Time after which the secret should be refreshed
+  refreshAfter: 10s
+
+  
+configMapName: env-vars-winnerservice
+config:
+  BodyLimit: "200000"
+  CheckSettingsDirtyCacheTime: "60000"
+  DatabaseProviderName: "Microsoft.Data.SqlClient"
+  ESBClientId: "WinnerServicePA"
+  ESBClientPassword: "dTshDTGwB2f8UvxA"
+  EmailServiceProvider: "sendgrid"
+  GamePlayDBNameSuffix: "PA"
+  GoogleGeoCode: ""
+  GoogleGeoCodeAppKey: ""
+  HTTP_PROXY: "http://10.179.0.20:3128"
+  HTTPS_PROXY: "http://10.179.0.20:3128"
+  NEW_RELIC_APP_NAME: "win-service-dev"

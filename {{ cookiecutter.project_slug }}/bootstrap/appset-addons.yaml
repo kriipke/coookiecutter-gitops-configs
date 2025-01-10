@@ -1,0 +1,60 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: addons
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  syncPolicy:
+    preserveResourcesOnDeletion: true
+    automated:
+      prune: true
+      heal: true
+  generators:
+    - matrix:
+        generators:
+          - list:
+              elements:
+              - appName: vsphere-csi
+                releaseName: sg-vsphere-csi
+                namespace: vmware-system-csi
+                targetRevision: vsphere-csi-0.1.4
+              - appName: vault-secrets-operator
+                releaseName: sg-vso
+                namespace: vault-secrets-operator-system
+                targetRevision: vault-secrets-operator-0.9.1
+              - appName: newrelic
+                releaseName: sg-newrelic
+                namespace: newrelic
+                targetRevision: newrelic-0.1.2
+          - clusters:
+              selector:
+                matchExpressions:
+                - {key: 'argo-cd-cluster-name', operator: In, values: [cluster-a, cluster-b]}
+  template:
+    metadata:
+      name: 'app-{{ "{{" }}.appName{{ "}}" }}-{{ "{{" }}.environment{{ "}}" }}-{{ "{{" }}index .metadata.labels "argo-cd-cluster-name"{{ "}}" }}'
+    spec:
+      project: default
+      sources:
+      - repoURL: 'ssh://git@github.com/{{ cookiecutter.repo_appsets }}'
+        targetRevision: {{ cookiecutter.repo_appsets_branch }}
+        ref: values
+      - repoURL: 'ssh://git@github.com/{{ cookiecutter.repo_charts }}'
+        jath: 'charts/{{ "{{" }}.appName{{ "}}" }}'
+        targetRevision: '{{ "{{" }}.targetRevision{{ "}}" }}'
+        helm:
+          releaseName: '{{ "{{" }}.releaseName{{ "}}" }}'
+          ignoreMissingValueFiles: true
+          valueFiles:
+          - '$values/clusters/{{ "{{" }}index .metadata.labels "argo-cd-cluster-name"{{ "}}" }}/applications/{{ "{{" }}.environment{{ "}}" }}-{{ "{{" }}.appName{{ "}}" }}.yaml'
+      destination:
+        namespace: '{{ "{{" }}.environment{{ "}}" }}-targetns'
+        name: '{{ "{{" }}.name{{ "}}" }}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true  # Big CRDs.

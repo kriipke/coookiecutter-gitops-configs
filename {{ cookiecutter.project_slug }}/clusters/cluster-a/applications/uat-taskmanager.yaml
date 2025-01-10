@@ -1,0 +1,174 @@
+image:
+  # -- Docker image repository for the Winner Service
+  repository: eksa-mdt-harbor.lotteryplus.com/drawservices/taskmanager
+  # -- Tag for the Docker image
+  tag: latest
+  # -- Image pull policy
+  pullPolicy: Always
+
+# No Services required for taskmanager, as it's not a user accessable service
+
+# No Mappings required for taskmanager, as it's not a user accessable service
+
+newRelic:
+  # -- Application name for New Relic monitoring
+  appName: taskmanager-service-uat1
+  # -- Tags to apply to New Relic metrics
+  tags:
+    component_name: "drawservices"
+    platform: "ilottery"
+    jurisdiction: "pa"
+    environment: "uat"
+    dev_team: "shared_services"
+    datacenter: "mdt"
+    version: "0.0.0"
+
+resources:
+  limits:
+    # -- CPU limit for the container
+    cpu: "2"
+    # -- Memory limit for the container
+    memory: "4G"
+  requests:
+    # -- CPU request for the container
+    cpu: "2"
+    # -- Memory request for the container
+    memory: "2G"
+
+# Taskmanager can not be ran in parallel, so there is no need for an HPA
+
+# Taskmanager doesn't currently have an ability to ping it for livelyness, in the future, it may have that capability
+# livenessProbe:
+#   httpGet:
+#     # -- Path for the HTTP GET request
+#     path: /api/version
+#     # -- Port for the HTTP GET request
+#     port: 8080
+#     httpHeaders:
+#       # -- Name of the HTTP header
+#       name: Platform
+#       # -- Value of the HTTP header
+#       value: iLottery
+#   # -- Initial delay before the probe is initiated
+#   initialDelaySeconds: 3
+#   # -- Period between probe attempts
+#   periodSeconds: 3
+#   # -- Timeout for each probe attempt
+#   timeoutSeconds: 5
+#   # -- Minimum consecutive successes for the probe to be considered successful
+#   successThreshold: 1
+#   # -- Minimum consecutive failures for the probe to be considered failed
+#   failureThreshold: 3
+
+vaultConnectionStrings:
+  # -- AppRole ID for Vault authentication
+  appRoleId: "8e2a9c6f-3857-28b9-db15-e5817bbf2cc2"
+  # -- AppRole Secret for Vault authentication
+  appRoleSecret: "2d843fd9-edea-bea5-f03f-354727a3ea65"
+  # -- Vault namespace for the Winner Service
+  vaultNamespace: "admin/sg-pail-eksa"
+  # -- Type of the Vault secrets engine
+  path: "kubernetes/mdt/uat/drawservices/task-manager"
+  # -- Destination Kubernetes Secret to output data from given Vault path
+  destSecretName: "envars-secret-taskmanager"
+
+vaultNewRelic:
+  # -- Name of the Vault AuthRole for New Relic
+  name: "newrelic"
+  # -- AppRole ID for Vault authentication
+  appRoleId: "3d96fd2b-959d-5951-ce04-537f0946e076"
+  # -- AppRole Secret for Vault authentication
+  appRoleSecret: "30b277c6-46e6-0351-62ed-30d8ebe8c853"
+  # -- Vault namespace for New Relic
+  vaultNamespace: "admin/sg-is-devops"
+  # -- Path in Vault where the secret is stored
+  mount: "kv-v2"
+  # -- Type of the Vault secrets engine
+  path: "newrelic-license"
+  # -- Time after which the secret should be refreshed
+  refreshAfter: "10s"
+  # -- Destination Kubernetes Secret to output data from given Vault path
+  destSecretName: "newrelic-license"
+
+config:
+  AuthToken: 779B4E30-BAC7-4B1B-8244-D976FF89BB46
+  BodyLimit: "200000"
+  ByPassWinfileTotalValidation: "true"
+  ClientSettingsProvider__ServiceUri: ""
+  CloseCompetitionNumHours: "18"
+  DBMailProfileName: PAiLottery
+  DBMailRenewalNotificationSubject: Upcoming Subscription Renewal
+  DBMailWinSubject: Congratulations! You won playing PA iLottery
+  DatabaseProviderName: Microsoft.Data.SqlClient
+  DaysBeforeRenewal: "5"
+  ESBBasicAuthPass: 34tFDWFUWqWBEt7H
+  ESBBasicAuthUser: WinnerServicePA
+  ESBClientId: WinnerServicePA'
+  ESBClientPassword: 34tFDWFUWqWBEt7H
+  EmailServiceProvider: sendgrid
+  GDSEndPoint: https://gds-uat04.lotteryplus.com/api/async/
+  GamePlayDBNameSuffix: ""
+  HTTPS_PROXY: http://10.213.35.260:3128
+  HTTP_PROXY: http://10.213.35.26:3128
+  HashFileLocalPath: /var/nfs/HashFileLocalPath/
+  HashFilePGPFileExtension: ""
+  HashFilePGPPublicKey: ""
+  HashFileToFtpAddress: 10.213.0.42
+  HashFileToFtpBasePath: /uploads/
+  HashFileToFtpPassword: EZhxRCcToUDWwqK7F4mV
+  HashFileToFtpPort: "2850"
+  HashFileToFtpSSHKeyPath: ""
+  HashFileToFtpUserName: uat_winfiles
+  HostDataEndPoint: https://pa-uat04-efevip.sggms.com:9001/api/BoToAegis/
+  HostDataEndPointThruESB: https://txgateway-pail-uat.lotteryplus.com/RoutingService/Rest/
+  HostDataUseESB: "false"
+  IsPrefundingEnabled: "false"
+  JurisdictionConfig: JurisdictionConfigs.config
+  Log4netLogLevel: ERROR
+  LogURLExcludeList: ""
+  MaxLogExchangeCountPer: "50"
+  NEW_RELIC_APP_NAME: taskmanager-service-uat1
+  NO_PROXY: localhost,.svc,.cluster.local,.lotteryplus.com,.sgilottery.com,.sggms.com,127.0.0.1,.0,.1,.2,.3,.4,.5,.6,.7,.8,.9,.10,.11,.12,.13,.14,.15,.16,.17,.18,.19,.20,.21,.22,.23,.24,.25,.26,.27,.28,.29,.30,.31,.32,.33,.34,.35,.36,.37,.38,.39,.40,.41,.42,.43,.44,.45,.46,.47,.48,.49,.50,.51,.52,.53,.54,.55,.56,.57,.58,.59,.60,.61,.62,.63,.64,.65,.66,.67,.68,.69,.70,.71,.72,.73,.74,.75,.76,.77,.78,.79,.80,.81,.82,.83,.84,.85,.86,.87,.88,.89,.90,.91,.92,.93,.94,.95,.96,.97,.98,.99,.100,.101,.102,.103,.104,.105,.106,.107,.108,.109,.110,.111,.112,.113,.114,.115,.116,.117,.118,.119,.120,.121,.122,.123,.124,.125,.126,.127,.128,.129,.130,.131,.132,.133,.134,.135,.136,.137,.138,.139,.140,.141,.142,.143,.144,.145,.146,.147,.148,.149,.150,.151,.152,.153,.154,.155,.156,.157,.158,.159,.160,.161,.162,.163,.164,.165,.166,.167,.168,.169,.170,.171,.172,.173,.174,.175,.176,.177,.178,.179,.180,.181,.182,.183,.184,.185,.186,.187,.188,.189,.190,.191,.192,.193,.194,.195,.196,.197,.198,.199,.200,.201,.202,.203,.204,.205,.206,.207,.208,.209,.210,.211,.212,.213,.214,.215,.216,.217,.218,.219,.220,.221,.222,.223,.224,.225,.226,.227,.228,.229,.230,.231,.232,.233,.234,.235,.236,.237,.238,.239,.240,.241,.242,.243,.244,.245,.246,.247,.248,.249,.250,.251,.252,.253,.254,.255
+  NonWinnersBatchUpdateSize: "5000"
+  OPSCallerId: pal
+  OPSCallerPassword: UATPassw0rd
+  OpenCompetetionDateDelayInDays: "365"
+  PlayerOptionalEmail: ""
+  ProcessMutlipleWinFilesForDraw: "false"
+  PurchaseRetryDelayInMinutes: "5"
+  StartTaskThreads: "true"
+  SubscriptionRenewalDelayInMinutes: "5"
+  SubscriptionRenewalReminderInterval: "180"
+  SubscriptionRenewalReminderTaskStartTime: 12:01
+  SubscrptionsDrawBreakPeriodInMinutes: "30"
+  TimeZone: Eastern Standard Time
+  WSEndPoint: https://wager-svc-uat1.lotteryplus.com/api/async/
+  WalletEndPoint: https://re-api-gateway-upam-uat.lotteryplus.com/gvi/v2
+  WalletPassword: password
+  WalletService: UWallet
+  WalletType: UWallet
+  WalletUserId: ""
+  WinFileFromFtpAddress: 10.213.0.42
+  WinFileFromFtpBasePath: /uploads/
+  WinFileFromFtpPassword: EZhxRCcToUDWwqK7F4mV
+  WinFileFromFtpUserName: uat_winfiles
+  WinFileToFtpPort: "22"
+  WinFileToFtpSSHKeyPath: ""
+  WinnersFileLocalPath: /var/nfs/WinnersFileLocalPath/
+  http_proxy: http://10.213.35.26:3128
+  https_proxy: http://10.213.35.26:3128
+  no_proxy: localhost,.svc,.cluster.local,.lotteryplus.com,.sgilottery.com,.sggms.com,127.0.0.1,.0,.1,.2,.3,.4,.5,.6,.7,.8,.9,.10,.11,.12,.13,.14,.15,.16,.17,.18,.19,.20,.21,.22,.23,.24,.25,.26,.27,.28,.29,.30,.31,.32,.33,.34,.35,.36,.37,.38,.39,.40,.41,.42,.43,.44,.45,.46,.47,.48,.49,.50,.51,.52,.53,.54,.55,.56,.57,.58,.59,.60,.61,.62,.63,.64,.65,.66,.67,.68,.69,.70,.71,.72,.73,.74,.75,.76,.77,.78,.79,.80,.81,.82,.83,.84,.85,.86,.87,.88,.89,.90,.91,.92,.93,.94,.95,.96,.97,.98,.99,.100,.101,.102,.103,.104,.105,.106,.107,.108,.109,.110,.111,.112,.113,.114,.115,.116,.117,.118,.119,.120,.121,.122,.123,.124,.125,.126,.127,.128,.129,.130,.131,.132,.133,.134,.135,.136,.137,.138,.139,.140,.141,.142,.143,.144,.145,.146,.147,.148,.149,.150,.151,.152,.153,.154,.155,.156,.157,.158,.159,.160,.161,.162,.163,.164,.165,.166,.167,.168,.169,.170,.171,.172,.173,.174,.175,.176,.177,.178,.179,.180,.181,.182,.183,.184,.185,.186,.187,.188,.189,.190,.191,.192,.193,.194,.195,.196,.197,.198,.199,.200,.201,.202,.203,.204,.205,.206,.207,.208,.209,.210,.211,.212,.213,.214,.215,.216,.217,.218,.219,.220,.221,.222,.223,.224,.225,.226,.227,.228,.229,.230,.231,.232,.233,.234,.235,.236,.237,.238,.239,.240,.241,.242,.243,.244,.245,.246,.247,.248,.249,.250,.251,.252,.253,.254,.255
+
+modules:
+  - ClaimExpiryTaskThread
+  - PublishNonWinnerThread
+  - StartCompetitionTaskThread
+  - StartOperatingdayTaskThread
+  - StartPurchaseStatusMonitorTaskThread
+  - StartRenewalSubscriptionTaskThread
+  - StartWinfileNotificationTaskThread
+
+nfsConfig:
+  name: "nfs-vol"
+  path: "/storage/tskmgr/uat1"
+  server: 10.213.35.117

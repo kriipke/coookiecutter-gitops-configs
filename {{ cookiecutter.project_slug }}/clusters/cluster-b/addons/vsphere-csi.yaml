@@ -1,0 +1,9 @@
+vaultSecretsOperator:
+  # -- Vault path to fetch secret from
+  path: "kubernetes/dc/app"
+  # -- AppRole ID for Vault authentication
+  appRoleId: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  # -- AppRole Secret for Vault authentication
+  appRoleSecret: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  # -- Type of the Vault secrets engine
+  refreshAfter: 10s

@@ -1,0 +1,13 @@
+= Workflows: GitOps Workloads Repository
+
+== Admin Dashboard
+
+path:: `./workflows/dashboard.yaml`
+purpose:: deploy adminstrative dashboard 
+on:: pull requests
+
+== Pull Request Labeler
+
+path:: `./workflows/labeler.yaml`
+purpose:: categorize and label pull requests based on paths of changed files, e.g. changes to `./docs/*` result in the pull request receiving the `documentation` label
+on:: pull requests 
