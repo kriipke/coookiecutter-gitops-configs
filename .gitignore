@@ -1,1 +1,96 @@
+# Ignore build directories
+/build/
+/dist/
+/out/
+/target/
+/node_modules/
+
+# Ignore dependency directories
+/vendor/
+
+# Ignore compiled files
+*.o
+*.so
+*.exe
+*.dll
+*.bin
+*.class
+*.jar
+
+# Ignore temporary files created by IDEs and Editors
+# Visual Studio Code
+.vscode/
+*.code-workspace
+
+# JetBrains IDEs
+.idea/
+*.iml
+
+# Eclipse
+.classpath
+.project
+.settings/
+
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# Atom
+.atom/
+
+# Ignore OS-specific files
+# macOS
 .DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Linux
+*~
+*.swp
+*.swo
+*.lock
+
+# Ignore logs
+*.log
+
+# Ignore temp files
+*.tmp
+*.temp
+
+# Ignore backup files
+*.bak
+*.orig
+
+# Ignore Kubernetes specific files
+# - If you store secrets or sensitive data in files
+secrets.yaml
+*.env
+*.env.local
+
+# Ignore Helm chart derived files
+*.tgz
+
+# Ignore README, Markdown, and documentation artifacts
+*.pdf
+*.docx
+*.html
+
+# Ignore configuration files for various tools
+# For Terraform
+*.tfstate
+*.tfstate.backup
+.terraform/
+
+# Ignore Git-specific files
+.purge/
+
+# Ignore generated files
+*.generated.yaml
+*.generated.yml

@@ -1,0 +1,57 @@
+
+global:
+  appName: backend
+
+image:
+  repository: github.com/kriipke/backend
+
+mapping: {}
+
+newRelic:
+  appName: backend-qa
+  tags:
+    environment: qa
+
+resources:
+  limits:
+    cpu: "2"
+    memory: "4G"
+  requests:
+    cpu: "2"
+    memory: "2G"
+
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 50
+  targetMemoryUtilizationPercentage: 50
+  behavior: {}
+    # scaleDown:
+    #  stabilizationWindowSeconds: 300
+    #  policies:
+    #   - type: Pods
+    #     value: 1
+    #     periodSeconds: 180
+    # scaleUp:
+    #   stabilizationWindowSeconds: 300
+    #   policies:
+    #   - type: Pods
+    #     value: 2
+    #     periodSeconds: 60
+
+vaultConnectionStrings:
+  appRoleId: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+  appRoleSecretId: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+  path: kubernetes/dc1/qa/backend
+  vaultNamespace: "admin/mynamespace"
+
+  
+configMapName: env-vars-backend
+config:
+  NEW_RELIC_APP_NAME: backend-qa
+  BodyLimit: "200000"
+  DatabaseProviderName: Microsoft.Data.SqlClient
+  EmailServiceProvider__PA: sendgrid
+  GoogleGeoCode: ""
+  GoogleGeoCodeAppKey: ""

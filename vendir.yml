@@ -1,0 +1,11 @@
+apiVersion: vendir.k14s.io/v1alpha1
+kind: Config
+directories:
+- path: gpt
+  contents:
+  - path: agents-assistants 
+    git: github.com/openai/openai-cookbook
+      url: 
+      ref: main
+    includePaths:
+    - examples/object_oriented_agentic_approach
