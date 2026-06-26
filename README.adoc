@@ -1,0 +1,139 @@
+= coookiecutter-gitops-configs
+
+A Cookiecutter template for generating an Argo CD GitOps configuration repository.
+
+The generated repository is intended to act as the application-set configuration layer for a Kubernetes platform. It bootstraps Argo CD from a Git repository, defines `ApplicationSet` resources, and stores per-cluster Helm values for platform add-ons and applications.
+
+== What This Template Generates
+
+The template creates a GitOps repository with this shape:
+
+[source,text]
+----
+<project_slug>/
+  bootstrap.yaml
+  bootstrap/
+    appset-addons.yaml
+    appset-apps.yaml
+  clusters/
+    cluster-a/
+      addons/
+      apps/
+    cluster-b/
+      addons/
+      apps/
+  README.adoc
+----
+
+Key generated files:
+
+* `bootstrap.yaml` - an Argo CD `Application` that points Argo CD at the generated `bootstrap/` directory.
+* `bootstrap/appset-apps.yaml` - an `ApplicationSet` for workload applications.
+* `bootstrap/appset-addons.yaml` - an `ApplicationSet` for cluster add-ons such as New Relic, vSphere CSI, and Vault Secrets Operator.
+* `clusters/<cluster>/apps/*.yaml` - environment-specific Helm values for applications.
+* `clusters/<cluster>/addons/*.yaml` - cluster-specific Helm values for platform add-ons.
+
+== Template Inputs
+
+The main prompts are defined in `cookiecutter.json`:
+
+[cols="1,2",options="header"]
+|===
+| Variable | Purpose
+
+| `platform_name`
+| Human-readable platform name used in generated documentation.
+
+| `project_name`
+| Display name for the generated GitOps repository.
+
+| `project_slug`
+| Directory name for generated output. By default this is derived from `project_name`.
+
+| `repo_appsets`
+| GitHub repository that will hold the generated ApplicationSet configuration.
+
+| `repo_charts`
+| GitHub repository that contains the Helm charts consumed by the generated ApplicationSets.
+
+| `repo_appsets_branch`
+| Branch Argo CD should track for ApplicationSet and values files.
+
+| `github_username`
+| GitHub owner used by template consumers when generating repositories.
+
+| `init_git`
+| Boolean flag reserved for generated repository initialization behavior.
+|===
+
+== Prerequisites
+
+Install:
+
+* Python 3
+* Cookiecutter
+* Docker
+* Git
+* Access to the target GitHub repositories from Argo CD
+
+The `pre_prompt` hook checks that Docker is available before prompting.
+
+== Generate a Repository
+
+Run Cookiecutter from a local checkout:
+
+[source,sh]
+----
+cookiecutter .
+----
+
+Or run it directly from GitHub:
+
+[source,sh]
+----
+cookiecutter gh:kriipke/coookiecutter-gitops-configs
+----
+
+Cookiecutter writes the generated repository into the selected `project_slug` directory.
+
+== Configure the Generated Repository
+
+After generation:
+
+. Review `bootstrap.yaml` and confirm the Argo CD namespace, repository URL, and target branch.
+. Update `bootstrap/appset-apps.yaml` with the application list, chart names, chart versions, release names, environments, and cluster selectors for your platform.
+. Update `bootstrap/appset-addons.yaml` with the add-ons and target clusters you want Argo CD to manage.
+. Replace the sample values under `clusters/` with real per-cluster and per-environment Helm values.
+. Commit and push the generated repository to the repository referenced by `repo_appsets`.
+. Apply `bootstrap.yaml` to the Argo CD control-plane cluster.
+
+Example bootstrap command:
+
+[source,sh]
+----
+kubectl apply -n argocd -f bootstrap.yaml
+----
+
+== Repository Relationships
+
+The generated GitOps repository expects two repository roles:
+
+* ApplicationSet and values repository - generated from this template and referenced by `repo_appsets`.
+* Helm chart repository - referenced by `repo_charts` and used as the chart source for Argo CD applications.
+
+The generated `ApplicationSet` resources use Argo CD multi-source applications so that chart templates can live in the chart repository while environment values live in the GitOps repository.
+
+== Development Notes
+
+This repository is the template source. The nested `{{ cookiecutter.project_slug }}/README.adoc` file documents the generated repository, not this template repository.
+
+When changing the template:
+
+* Keep `cookiecutter.json` in sync with variables referenced in hooks and rendered files.
+* Prefer adding sample clusters, add-ons, and applications as minimal examples that users can replace.
+* Render the template locally after editing and review the generated YAML before publishing changes.
+* Avoid committing generated output except for files that are part of the Cookiecutter template itself.
+
+== License
+
+No license file is currently included. Add one before distributing this template broadly.
