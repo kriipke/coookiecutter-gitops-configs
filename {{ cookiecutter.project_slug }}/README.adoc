@@ -1,20 +1,100 @@
-= {{ cookiecutter.project_name }}: {{ cookiecutter.platform_name }}
+= {{ cookiecutter.project_name }} ({{ cookiecutter.platform_name }})
 
-This is the **single source of truth** for the Kubernetes cluster configuration for PA iLottery deployment.
+This repository is the **single source of truth** for the Argo CD GitOps
+configuration of the {{ cookiecutter.platform_name }} Kubernetes platform.
+
+It defines how Argo CD bootstraps itself, which applications and add-ons are
+deployed to which clusters, and the per-cluster Helm values used for each
+deployment.
 
 It is hosted at:
 
-https://github.com/sg-gitops/{{ cookiecutter.repo_appsets }}
+https://github.com/{{ cookiecutter.repo_appsets }}
+
+== Repository Layout
+
+[source,text]
+----
+bootstrap.yaml              <1>
+bootstrap/
+  appset-apps.yaml          <2>
+  appset-addons.yaml        <3>
+clusters/
+  cluster-a/
+    apps/                   <4>
+    addons/                 <5>
+  cluster-b/
+    apps/
+    addons/
+----
+<1> Root Argo CD `Application` that points Argo CD at the `bootstrap/` directory.
+<2> `ApplicationSet` that deploys platform workload applications.
+<3> `ApplicationSet` that deploys cluster add-ons.
+<4> Per-cluster Helm values for applications, named per environment.
+<5> Per-cluster Helm values for add-ons.
+
+== How It Works
+
+`bootstrap.yaml` is an Argo CD `Application` that recursively syncs the
+`bootstrap/` directory of this repository. Applying it once is enough for
+Argo CD to discover and manage everything else:
+
+[source,sh]
+----
+kubectl apply -n {{ cookiecutter.argo_namespace }} -f bootstrap.yaml
+----
+
+The `bootstrap/` directory contains two `ApplicationSet` resources:
+
+* `appset-apps.yaml` - generates one Argo CD `Application` per
+  (application x cluster) combination for platform workloads.
+* `appset-addons.yaml` - generates one Argo CD `Application` per
+  (add-on x cluster) combination for cluster add-ons such as cert-manager,
+  external-secrets, and metrics-server.
+
+Both `ApplicationSet` resources use Argo CD multi-source applications: the
+per-cluster values come from this repository (under `clusters/`), while the
+chart comes from a separate source - the private Helm chart repository for
+applications, or each add-on's upstream public Helm repository.
 
 == Helm Charts
 
-This GitOps configuration repository sources its Helm Charts from the following repository:
+Application charts are sourced from the private Helm chart repository:
 
 https://github.com/{{ cookiecutter.repo_charts }}
 
-These two repositories in tandum manage the configuration of the PA iLottery platform in:
+Add-on charts are pulled directly from their upstream public Helm repositories
+(for example cert-manager, external-secrets, metrics-server), so they do not
+depend on the private chart repository.
 
-- Dev
-- QA 
-- UAT
-- Prod
+== Per-Cluster Values
+
+Each registered cluster has a directory under `clusters/` containing:
+
+* `apps/` - Helm values for applications, named per environment
+  (for example `qa-podinfo.yaml`).
+* `addons/` - Helm values for cluster add-ons (for example `cert-manager.yaml`,
+  `external-secrets.yaml`).
+
+The `argo-cd-cluster-name` label on each registered cluster (for example
+`cluster-a`, `cluster-b`) selects which clusters an `ApplicationSet` targets
+and which values directory Argo CD reads.
+
+== Repository References
+
+[cols="1,2",options="header"]
+|===
+| Setting | Value
+
+| ApplicationSet / values repository
+| `{{ cookiecutter.repo_appsets }}`
+
+| Helm chart repository (applications)
+| `{{ cookiecutter.repo_charts }}`
+
+| Tracked branch
+| `{{ cookiecutter.repo_appsets_branch }}`
+
+| Argo CD namespace
+| `{{ cookiecutter.argo_namespace }}`
+|===

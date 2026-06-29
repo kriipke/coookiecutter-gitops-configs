@@ -15,41 +15,52 @@ spec:
         generators:
           - list:
               elements:
-              - appName: vsphere-csi
-                releaseName: sg-vsphere-csi
-                namespace: vmware-system-csi
-                targetRevision: vsphere-csi-0.1.4
-              - appName: vault-secrets-operator
-                releaseName: sg-vso
-                namespace: vault-secrets-operator-system
-                targetRevision: vault-secrets-operator-0.9.1
-              - appName: newrelic
-                releaseName: sg-newrelic
-                namespace: newrelic
-                targetRevision: newrelic-0.1.2
+              # Public upstream Helm charts (no private chart repo). Per-cluster
+              # value overrides still come from this GitOps repo under
+              # clusters/<cluster>/addons/<addon>.yaml.
+              - appName: cert-manager
+                chartRepoURL: https://charts.jetstack.io
+                chartName: cert-manager
+                releaseName: cert-manager
+                namespace: cert-manager
+                targetRevision: v1.20.3
+              - appName: external-secrets
+                chartRepoURL: https://charts.external-secrets.io
+                chartName: external-secrets
+                releaseName: external-secrets
+                namespace: external-secrets
+                targetRevision: 2.7.0
+              - appName: metrics-server
+                chartRepoURL: https://kubernetes-sigs.github.io/metrics-server/
+                chartName: metrics-server
+                releaseName: metrics-server
+                namespace: kube-system
+                targetRevision: 3.13.1
           - clusters:
               selector:
                 matchExpressions:
                 - {key: 'argo-cd-cluster-name', operator: In, values: [cluster-a, cluster-b]}
   template:
     metadata:
-      name: 'app-{{ "{{" }}.appName{{ "}}" }}-{{ "{{" }}.environment{{ "}}" }}-{{ "{{" }}index .metadata.labels "argo-cd-cluster-name"{{ "}}" }}'
+      name: 'app-{{ "{{" }}.appName{{ "}}" }}-{{ "{{" }}index .metadata.labels "argo-cd-cluster-name"{{ "}}" }}'
     spec:
       project: default
       sources:
+      # 1) values from this GitOps repo (private is fine - it's config, not charts)
       - repoURL: 'ssh://git@github.com/{{ cookiecutter.repo_appsets }}'
         targetRevision: {{ cookiecutter.repo_appsets_branch }}
         ref: values
-      - repoURL: 'ssh://git@github.com/{{ cookiecutter.repo_charts }}'
-        jath: 'charts/{{ "{{" }}.appName{{ "}}" }}'
+      # 2) the chart, pulled from its PUBLIC upstream Helm repository
+      - repoURL: '{{ "{{" }}.chartRepoURL{{ "}}" }}'
+        chart: '{{ "{{" }}.chartName{{ "}}" }}'
         targetRevision: '{{ "{{" }}.targetRevision{{ "}}" }}'
         helm:
           releaseName: '{{ "{{" }}.releaseName{{ "}}" }}'
           ignoreMissingValueFiles: true
           valueFiles:
-          - '$values/clusters/{{ "{{" }}index .metadata.labels "argo-cd-cluster-name"{{ "}}" }}/applications/{{ "{{" }}.environment{{ "}}" }}-{{ "{{" }}.appName{{ "}}" }}.yaml'
+          - '$values/clusters/{{ "{{" }}index .metadata.labels "argo-cd-cluster-name"{{ "}}" }}/addons/{{ "{{" }}.appName{{ "}}" }}.yaml'
       destination:
-        namespace: '{{ "{{" }}.environment{{ "}}" }}-targetns'
+        namespace: '{{ "{{" }}.namespace{{ "}}" }}'
         name: '{{ "{{" }}.name{{ "}}" }}'
       syncPolicy:
         automated:
@@ -57,4 +68,4 @@ spec:
           selfHeal: true
         syncOptions:
           - CreateNamespace=true
-          - ServerSideApply=true  # Big CRDs.
+          - ServerSideApply=true  # required for cert-manager's large CRDs

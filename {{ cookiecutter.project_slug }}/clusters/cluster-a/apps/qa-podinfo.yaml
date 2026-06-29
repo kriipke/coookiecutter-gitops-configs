@@ -1,0 +1,26 @@
+# Helm values for the podinfo chart (charts/podinfo) in the QA environment.
+# Schema follows the upstream podinfo chart:
+# https://github.com/stefanprodan/podinfo/blob/master/charts/podinfo/values.yaml
+replicaCount: 2
+
+logLevel: info
+
+ui:
+  color: "#34577c"
+  message: "Hello from the QA environment"
+
+resources:
+  limits:
+    cpu: "200m"
+    memory: "64Mi"
+  requests:
+    cpu: "100m"
+    memory: "32Mi"
+
+hpa:
+  enabled: true
+  maxReplicas: 4
+  cpu: 80
+
+ingress:
+  enabled: false

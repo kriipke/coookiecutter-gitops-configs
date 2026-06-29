@@ -1,8 +1,0 @@
-nri-bundle:
-  global:
-    cluster: cluster-a
-    proxy: "http://10.10.10.10:3128"
-    customAttributes:
-      jurisdiction: 'ONE'
-      datacenter: 'US-EAST'
-      tier: 'FRONTEND'

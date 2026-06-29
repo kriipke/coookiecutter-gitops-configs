@@ -1,0 +1,5 @@
+# metrics-server values - https://kubernetes-sigs.github.io/metrics-server/ (chart 3.13.1)
+# No CRDs. On kubeadm/kind/self-managed clusters the kubelet serving cert is
+# often untrusted; uncomment to let metrics-server skip kubelet TLS verification.
+# args:
+#   - --kubelet-insecure-tls

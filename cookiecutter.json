@@ -7,8 +7,5 @@
   "repo_charts": "kriipke/argocd-charts-multirepo",
   "init_git": true,
   "repo_appsets_branch": "main",
-  "github_username": "your-org-or-username",
-  "_copy_without_render": [
-      "bootstrap/*"
-  ]
+  "github_username": "your-org-or-username"
 }
