@@ -20,17 +20,20 @@ bootstrap/
   appset-apps.yaml          <2>
   appset-addons.yaml        <3>
 clusters/
-  cluster-a/
+  {{ cookiecutter.cluster_dev }}/
     apps/                   <4>
     addons/                 <5>
-  cluster-b/
+  {{ cookiecutter.cluster_stage }}/
+    apps/
+    addons/
+  {{ cookiecutter.cluster_prod }}/
     apps/
     addons/
 ----
 <1> Root Argo CD `Application` that points Argo CD at the `bootstrap/` directory.
 <2> `ApplicationSet` that deploys platform workload applications.
 <3> `ApplicationSet` that deploys cluster add-ons.
-<4> Per-cluster Helm values for applications, named per environment.
+<4> Per-cluster Helm values for applications.
 <5> Per-cluster Helm values for add-ons.
 
 == How It Works
@@ -46,11 +49,14 @@ kubectl apply -n {{ cookiecutter.argo_namespace }} -f bootstrap.yaml
 
 The `bootstrap/` directory contains two `ApplicationSet` resources:
 
-* `appset-apps.yaml` - generates one Argo CD `Application` per
-  (application x cluster) combination for platform workloads.
-* `appset-addons.yaml` - generates one Argo CD `Application` per
-  (add-on x cluster) combination for cluster add-ons such as cert-manager,
-  external-secrets, and metrics-server.
+* `appset-apps.yaml` - deploys the platform applications to every cluster, with
+  a per-cluster chart revision: `{{ cookiecutter.cluster_dev }}` tracks the
+  charts repo's `main` branch, while `{{ cookiecutter.cluster_stage }}` and
+  `{{ cookiecutter.cluster_prod }}` pin released tags (stage is kept ahead of
+  prod, so changes soak in stage before they are promoted to prod).
+* `appset-addons.yaml` - deploys cluster add-ons (cert-manager,
+  external-secrets, metrics-server) to every cluster, pinned to the same
+  versions everywhere.
 
 Both `ApplicationSet` resources use Argo CD multi-source applications: the
 per-cluster values come from this repository (under `clusters/`), while the
@@ -71,14 +77,14 @@ depend on the private chart repository.
 
 Each registered cluster has a directory under `clusters/` containing:
 
-* `apps/` - Helm values for applications, named per environment
-  (for example `qa-podinfo.yaml`).
+* `apps/` - Helm values for applications (for example `podinfo.yaml`).
 * `addons/` - Helm values for cluster add-ons (for example `cert-manager.yaml`,
   `external-secrets.yaml`).
 
-The `argo-cd-cluster-name` label on each registered cluster (for example
-`cluster-a`, `cluster-b`) selects which clusters an `ApplicationSet` targets
-and which values directory Argo CD reads.
+Each `ApplicationSet` targets clusters **by name** - the cluster's registered
+name in Argo CD (`{{ cookiecutter.cluster_dev }}`, `{{ cookiecutter.cluster_stage }}`,
+`{{ cookiecutter.cluster_prod }}`) - and reads that cluster's values directory
+under `clusters/<cluster>/`.
 
 == Repository References
 

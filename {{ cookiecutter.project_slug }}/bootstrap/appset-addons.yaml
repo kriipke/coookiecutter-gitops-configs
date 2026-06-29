@@ -13,11 +13,9 @@ spec:
   generators:
     - matrix:
         generators:
+          # the add-on charts (public Helm repos), same versions on every cluster
           - list:
               elements:
-              # Public upstream Helm charts (no private chart repo). Per-cluster
-              # value overrides still come from this GitOps repo under
-              # clusters/<cluster>/addons/<addon>.yaml.
               - appName: cert-manager
                 chartRepoURL: https://charts.jetstack.io
                 chartName: cert-manager
@@ -36,17 +34,19 @@ spec:
                 releaseName: metrics-server
                 namespace: kube-system
                 targetRevision: 3.13.1
-          - clusters:
-              selector:
-                matchExpressions:
-                - {key: 'argo-cd-cluster-name', operator: In, values: [cluster-a, cluster-b]}
+          # the target clusters, BY NAME
+          - list:
+              elements:
+              - cluster: {{ cookiecutter.cluster_dev }}
+              - cluster: {{ cookiecutter.cluster_stage }}
+              - cluster: {{ cookiecutter.cluster_prod }}
   template:
     metadata:
-      name: 'app-{{ "{{" }}.appName{{ "}}" }}-{{ "{{" }}index .metadata.labels "argo-cd-cluster-name"{{ "}}" }}'
+      name: '{{ "{{" }}.appName{{ "}}" }}-{{ "{{" }}.cluster{{ "}}" }}'
     spec:
       project: default
       sources:
-      # 1) values from this GitOps repo (private is fine - it's config, not charts)
+      # 1) per-cluster values from this GitOps repo (config, not charts)
       - repoURL: 'ssh://git@github.com/{{ cookiecutter.repo_appsets }}'
         targetRevision: {{ cookiecutter.repo_appsets_branch }}
         ref: values
@@ -58,10 +58,10 @@ spec:
           releaseName: '{{ "{{" }}.releaseName{{ "}}" }}'
           ignoreMissingValueFiles: true
           valueFiles:
-          - '$values/clusters/{{ "{{" }}index .metadata.labels "argo-cd-cluster-name"{{ "}}" }}/addons/{{ "{{" }}.appName{{ "}}" }}.yaml'
+          - '$values/clusters/{{ "{{" }}.cluster{{ "}}" }}/addons/{{ "{{" }}.appName{{ "}}" }}.yaml'
       destination:
+        name: '{{ "{{" }}.cluster{{ "}}" }}'
         namespace: '{{ "{{" }}.namespace{{ "}}" }}'
-        name: '{{ "{{" }}.name{{ "}}" }}'
       syncPolicy:
         automated:
           prune: true

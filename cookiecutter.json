@@ -7,5 +7,13 @@
   "repo_charts": "kriipke/argocd-charts-multirepo",
   "init_git": true,
   "repo_appsets_branch": "main",
-  "github_username": "your-org-or-username"
+  "cluster_dev": "cluster-dev",
+  "cluster_stage": "cluster-stage",
+  "cluster_prod": "cluster-prod",
+  "github_username": "your-org-or-username",
+  "__prompts__": {
+    "cluster_dev": "Name of the dev cluster (as registered in Argo CD)",
+    "cluster_stage": "Name of the stage cluster (as registered in Argo CD)",
+    "cluster_prod": "Name of the prod cluster (as registered in Argo CD)"
+  }
 }

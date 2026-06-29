@@ -1,0 +1,20 @@
+# podinfo values - dev (chart tracks the 'main' branch of the charts repo)
+# Schema: https://github.com/stefanprodan/podinfo/blob/master/charts/podinfo/values.yaml
+replicaCount: 1
+
+logLevel: debug
+
+ui:
+  color: "#34577c"
+  message: "Hello from dev (tracking main)"
+
+resources:
+  requests:
+    cpu: "100m"
+    memory: "32Mi"
+
+hpa:
+  enabled: false
+
+ingress:
+  enabled: false

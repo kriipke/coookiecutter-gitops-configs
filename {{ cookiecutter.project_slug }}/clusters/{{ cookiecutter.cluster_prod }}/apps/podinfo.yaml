@@ -1,0 +1,25 @@
+# podinfo values - prod (chart pinned to podinfo-6.14.0)
+# Schema: https://github.com/stefanprodan/podinfo/blob/master/charts/podinfo/values.yaml
+replicaCount: 3
+
+logLevel: info
+
+ui:
+  color: "#34577c"
+  message: "Hello from prod"
+
+resources:
+  limits:
+    cpu: "500m"
+    memory: "128Mi"
+  requests:
+    cpu: "250m"
+    memory: "64Mi"
+
+hpa:
+  enabled: true
+  maxReplicas: 8
+  cpu: 75
+
+ingress:
+  enabled: false

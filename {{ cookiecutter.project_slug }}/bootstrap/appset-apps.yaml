@@ -11,31 +11,38 @@ spec:
       prune: true
       heal: true
   generators:
-    - matrix:
-        generators:
-          - list:
-              elements:
-              # Example app: podinfo (https://github.com/stefanprodan/podinfo),
-              # a small Go microservice commonly used to demo GitOps.
-              # The chart is expected at charts/podinfo in the private
-              # {{ cookiecutter.repo_charts }} repository, tagged podinfo-<chartVersion>.
-              - appName: podinfo
-                releaseName: podinfo-qa
-                targetRevision: podinfo-6.14.0
-                environment: qa
-          - clusters:
-              selector:
-                matchExpressions:
-                - {key: 'argo-cd-cluster-name', operator: In, values: [cluster-a]}
+    # One explicit entry per (app x cluster). Each entry pins its own chart
+    # revision: dev tracks the charts repo's 'main' branch, while stage and prod
+    # pin released tags (stage ahead of prod, so changes soak before promotion).
+    # Applications are placed on clusters BY NAME.
+    - list:
+        elements:
+        - appName: podinfo
+          cluster: {{ cookiecutter.cluster_dev }}
+          environment: dev
+          releaseName: podinfo-dev
+          targetRevision: main
+        - appName: podinfo
+          cluster: {{ cookiecutter.cluster_stage }}
+          environment: stage
+          releaseName: podinfo-stage
+          targetRevision: podinfo-6.14.0
+        - appName: podinfo
+          cluster: {{ cookiecutter.cluster_prod }}
+          environment: prod
+          releaseName: podinfo-prod
+          targetRevision: podinfo-6.13.0
   template:
     metadata:
-      name: 'app-{{ "{{" }}.appName{{ "}}" }}-{{ "{{" }}.environment{{ "}}" }}-{{ "{{" }}index .metadata.labels "argo-cd-cluster-name"{{ "}}" }}'
+      name: '{{ "{{" }}.appName{{ "}}" }}-{{ "{{" }}.environment{{ "}}" }}'
     spec:
       project: default
       sources:
+      # 1) per-cluster values from this GitOps repo
       - repoURL: 'ssh://git@github.com/{{ cookiecutter.repo_appsets }}'
         targetRevision: {{ cookiecutter.repo_appsets_branch }}
         ref: values
+      # 2) the application chart from the private chart repo
       - repoURL: 'ssh://git@github.com/{{ cookiecutter.repo_charts }}'
         path: 'charts/{{ "{{" }}.appName{{ "}}" }}'
         targetRevision: '{{ "{{" }}.targetRevision{{ "}}" }}'
@@ -43,10 +50,10 @@ spec:
           releaseName: '{{ "{{" }}.releaseName{{ "}}" }}'
           ignoreMissingValueFiles: false
           valueFiles:
-          - '$values/clusters/{{ "{{" }}index .metadata.labels "argo-cd-cluster-name"{{ "}}" }}/apps/{{ "{{" }}.environment{{ "}}" }}-{{ "{{" }}.appName{{ "}}" }}.yaml'
+          - '$values/clusters/{{ "{{" }}.cluster{{ "}}" }}/apps/{{ "{{" }}.appName{{ "}}" }}.yaml'
       destination:
+        name: '{{ "{{" }}.cluster{{ "}}" }}'
         namespace: '{{ "{{" }}.environment{{ "}}" }}-targetns'
-        name: '{{ "{{" }}.name{{ "}}" }}'
       syncPolicy:
         automated:
           prune: true
