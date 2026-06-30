@@ -6,6 +6,11 @@
 # paths, so the workflows never hardcode any of them (and need no cookiecutter
 # variables - they are copied verbatim via _copy_without_render).
 #
+# TEMPLATE ASSUMPTION: this is a deliberately narrow helper that reads this repo's
+# simple list generator (.spec.generators[0].list.elements). It is NOT a generic
+# ApplicationSet parser. If you switch appset-apps.yaml to a Git/files/cluster/
+# matrix generator, update this script. See docs/tutorial-simplifications.adoc.
+#
 # Usage: appset-matrix.sh [path-to-appset-apps.yaml]
 # Output (stdout): a single compact JSON array, one object per element:
 #   {appName,cluster,environment,releaseName,targetRevision,

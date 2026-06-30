@@ -160,12 +160,25 @@ shipping a values file.
 
 == Sync behaviour
 
-* Both `ApplicationSet` resources sync automatically with `prune: true` and
-  self-heal enabled, so drift is corrected and removed elements are cleaned up.
+There are two distinct `syncPolicy` blocks, at two different levels, and they do
+different jobs:
+
+* `template.spec.syncPolicy` is the **generated `Application`'s** policy - it
+  controls how that Application reconciles its workloads onto the cluster. This
+  is where `automated: { prune: true, selfHeal: true }` lives, so drift is
+  corrected and removed elements are cleaned up.
+* The `ApplicationSet`'s own top-level `syncPolicy` controls how the
+  `ApplicationSet` *controller* manages the generated `Application` **objects**
+  (not their cluster workloads). The only field set here is
+  `preserveResourcesOnDeletion: true`, which means deleting the set does not
+  cascade-delete the workloads it manages. Putting `automated.prune`/`selfHeal`
+  at this level has no effect - those keys are not part of the ApplicationSet
+  `syncPolicy` API - so they are deliberately absent.
+
+Other generated-Application sync options:
+
 * `CreateNamespace=true` creates the destination namespace on first sync.
 * `ServerSideApply=true` is used to apply large resources reliably.
-* `preserveResourcesOnDeletion: true` on the `ApplicationSet` means deleting the
-  set does not cascade-delete the workloads it manages.
 
 == Validation & CI gates
 
@@ -181,3 +194,8 @@ changes. See link:promoting-chart-upgrades.adoc[Promoting Chart Upgrades Safely]
 
 To actually change what runs - edit values, add an app, or move a release from
 dev to prod - see link:developing-and-promoting-apps.adoc[Developing & Promoting Apps].
+
+This repo is a teaching base, so a few things are deliberately simplified (add-on
+CI scope, the helper scripts, bootstrap sync, the `default` project, by-name
+cluster targeting). Each is labelled, with production guidance, in
+link:tutorial-simplifications.adoc[Tutorial Simplifications & Production Notes].

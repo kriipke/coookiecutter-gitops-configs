@@ -22,6 +22,10 @@ In-depth docs live under `docs/`:
 * link:docs/promoting-chart-upgrades.adoc[Promoting Chart Upgrades Safely] - the
   CI render gate, the SemVer contract, and how to handle chart upgrades that
   change the values structure.
+* link:docs/tutorial-simplifications.adoc[Tutorial Simplifications & Production
+  Notes] - what this base template deliberately simplifies (add-on CI scope, the
+  helper scripts, bootstrap sync, the `default` project, cluster naming) and how
+  to harden each for production.
 
 == CI/CD Setup (one-time)
 

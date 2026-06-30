@@ -9,6 +9,11 @@
 #
 # Usage: soak-guard.sh <app> <candidate-prod-tag> [path-to-appset-apps.yaml]
 # Requires full git history (checkout with fetch-depth: 0) to see prior stage tags.
+#
+# TEMPLATE ASSUMPTION: reads this repo's simple list generator
+# (.spec.generators[0].list.elements); it is not a generic ApplicationSet parser.
+# Switching generator types means updating this script. See
+# docs/tutorial-simplifications.adoc.
 set -euo pipefail
 
 app="${1:?usage: soak-guard.sh <app> <candidate-prod-tag> [appset]}"

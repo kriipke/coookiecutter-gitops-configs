@@ -7,6 +7,11 @@
 # and compares semantic content (JSON, key-sorted) so comments and key order do
 # not matter.
 #
+# TEMPLATE ASSUMPTION: reads this repo's simple list generator
+# (.spec.generators[0].list.elements); it is not a generic ApplicationSet parser.
+# Switching generator types means updating this script. See
+# docs/tutorial-simplifications.adoc.
+#
 # Usage: stage-prod-lockstep.sh [path-to-appset-apps.yaml]
 # Env:
 #   LOCKSTEP_ALLOWLIST            comma-separated yq paths to ignore (default: ui.message)

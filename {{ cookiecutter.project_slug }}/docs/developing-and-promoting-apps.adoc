@@ -178,7 +178,10 @@ diff clusters/{{ cookiecutter.cluster_stage }}/apps/<appName>.yaml \
 
 The only expected differences are environment identity (for example the
 `ui.message`), not sizing, autoscaling, or hardening. CI runs this same check
-(the stage/prod lockstep job) on every PR, so drift is caught automatically.
+(the stage/prod lockstep job) on every PR and *blocks the PR* on drift by
+default, so divergence cannot slip through (relax it to warn-only with the
+`STAGE_PROD_LOCKSTEP_BLOCKING` repo variable - see
+link:promoting-chart-upgrades.adoc[Promoting Chart Upgrades Safely]).
 
 `{{ cookiecutter.cluster_dev }}` is the exception: it is a lightweight iteration
 profile and is tuned independently, so you can change it freely without touching

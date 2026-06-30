@@ -16,6 +16,10 @@ workloads, and how you develop applications and promote them from dev to prod.
 * link:promoting-chart-upgrades.adoc[Promoting Chart Upgrades Safely] - the SemVer
   contract, the CI render gate, and the runbook for upgrades that change the
   chart's values structure (breaking changes) - including the charts-repo CI.
+* link:tutorial-simplifications.adoc[Tutorial Simplifications & Production Notes] -
+  the choices this base template makes for teaching clarity (add-on CI scope, the
+  template-specific helper scripts, bootstrap sync behaviour, the `default`
+  AppProject, by-name cluster targeting) and how to harden each for production.
 
 == TL;DR
 

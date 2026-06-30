@@ -5,11 +5,13 @@ metadata:
 spec:
   goTemplate: true
   goTemplateOptions: ["missingkey=error"]
+  # ApplicationSet-level syncPolicy governs how this controller manages the
+  # generated Application *objects* - not how their workloads sync to clusters.
+  # The only field that belongs here is preserveResourcesOnDeletion (the cluster
+  # sync behaviour - automated/prune/selfHeal - lives on template.spec.syncPolicy
+  # below).
   syncPolicy:
     preserveResourcesOnDeletion: true
-    automated:
-      prune: true
-      heal: true
   generators:
     - matrix:
         generators:

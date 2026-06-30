@@ -69,7 +69,9 @@ apps, clusters, tags, and the charts repo by parsing `bootstrap/appset-apps.yaml
   This guarantees Argo CD never renders a new chart against stale values.
 * *Stage/prod lockstep* - `{{ cookiecutter.cluster_stage }}` and
   `{{ cookiecutter.cluster_prod }}` values must match (except an allowlist,
-  default `ui.message`) so stage truly soaks what prod runs.
+  default `ui.message`) so stage truly soaks what prod runs. *Blocking by
+  default* (drift fails the gate); set `STAGE_PROD_LOCKSTEP_BLOCKING=false` to
+  warn only.
 * *Advisory stale-key check* - flags keys set in a values file that the chart's
   `values.yaml` no longer defines. It is best-effort (it can't see keys nested
   under free-form maps/lists) and emits warnings only by default.
@@ -85,7 +87,8 @@ Actions -> Variables):
 | `true` lets non-breaking stage PRs auto-merge once checks pass (default: off).
 
 | `STAGE_PROD_LOCKSTEP_BLOCKING`
-| `true` fails the build on stage/prod drift (default: warn only).
+| Fails the build on stage/prod drift (default: *on*). Set to `false` to soften
+  to warn-only, e.g. during a workshop.
 
 | `STALE_KEYS_BLOCKING`
 | `true` fails the build on advisory stale-key findings (default: warn only).

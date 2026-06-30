@@ -85,7 +85,10 @@ jobs:
           sudo chmod +x /usr/local/bin/yq
       - name: Stage/prod values lockstep
         env:
-          STAGE_PROD_LOCKSTEP_BLOCKING: ${{ vars.STAGE_PROD_LOCKSTEP_BLOCKING || 'false' }}
+          # Blocking by default: stage soaking prod-like config is a core thesis
+          # of this repo, so drift fails the gate. Set the repo variable to
+          # 'false' to soften it to warn-only (e.g. during a workshop/demo).
+          STAGE_PROD_LOCKSTEP_BLOCKING: ${{ vars.STAGE_PROD_LOCKSTEP_BLOCKING || 'true' }}
           LOCKSTEP_ALLOWLIST: ${{ vars.LOCKSTEP_ALLOWLIST || 'ui.message' }}
         run: bash .github/scripts/stage-prod-lockstep.sh bootstrap/appset-apps.yaml
 
