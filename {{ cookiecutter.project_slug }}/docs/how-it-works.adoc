@@ -1,0 +1,172 @@
+= How It Works
+
+This repository is the GitOps configuration layer for the
+{{ cookiecutter.platform_name }} Kubernetes platform. It does not contain Helm
+charts or application source code - it describes *what* should run *where*, and
+points Argo CD at the charts and values needed to make that happen.
+
+== The two-repository model
+
+The setup is deliberately split across two repositories:
+
+[cols="1,3",options="header"]
+|===
+| Repository | Role
+
+| `{{ cookiecutter.repo_appsets }}` (this repo)
+| *Configuration.* Holds the `ApplicationSet` resources (under `bootstrap/`) and
+  the per-cluster Helm values (under `clusters/`). This is the single source of
+  truth for which apps and add-ons run on which clusters.
+
+| `{{ cookiecutter.repo_charts }}`
+| *Application charts.* A private Helm chart repository. Each application has a
+  chart under `charts/<appName>/`. Releases are cut as Git tags
+  (for example `podinfo-6.14.0`).
+|===
+
+Add-on charts (for example `metrics-server`) are *not* pulled from either repo -
+they come straight from their upstream public Helm repositories.
+
+Keeping config and charts apart means a chart can be released independently, and
+a cluster's behaviour is changed by a reviewable commit in this repo rather than
+by mutating anything in place.
+
+== The bootstrap flow
+
+Argo CD is brought online with a single, one-time `kubectl apply`:
+
+[source,sh]
+----
+kubectl apply -n {{ cookiecutter.argo_namespace }} -f bootstrap.yaml
+----
+
+From there, everything is reconciled from Git:
+
+[source,text]
+----
+  kubectl apply
+  bootstrap.yaml
+        |
+        v
+  bootstrap (Application)            <-- syncs bootstrap/ recursively
+        |
+        | discovers
+        +---------------------------+
+        v                           v
+  applications (ApplicationSet)   addons (ApplicationSet)
+        |                           |
+        | one Application per       | one Application per
+        | (app x cluster)          | (add-on x cluster)
+        v                           v
+  podinfo-dev   -> {{ cookiecutter.cluster_dev }}      metrics-server-* -> every cluster
+  podinfo-stage -> {{ cookiecutter.cluster_stage }}
+  podinfo-prod  -> {{ cookiecutter.cluster_prod }}
+----
+
+* `bootstrap.yaml` is an Argo CD `Application` that recursively syncs the
+  `bootstrap/` directory of this repo onto the control-plane cluster
+  (`in-cluster`, namespace `{{ cookiecutter.argo_namespace }}`). It is the only
+  thing applied by hand.
+* `bootstrap/` contains the two `ApplicationSet` resources below. Argo CD picks
+  them up and each one generates the actual `Application` objects.
+
+== `bootstrap/appset-apps.yaml` - applications
+
+A `list` generator with one explicit element per `(app x cluster)`. Each element
+carries everything that makes that placement unique:
+
+[source,yaml]
+----
+- appName: podinfo
+  cluster: {{ cookiecutter.cluster_dev }}
+  environment: dev
+  releaseName: podinfo-dev
+  targetRevision: main            # tracks the charts repo 'main' branch
+- appName: podinfo
+  cluster: {{ cookiecutter.cluster_stage }}
+  environment: stage
+  releaseName: podinfo-stage
+  targetRevision: podinfo-6.14.0  # pinned release tag
+- appName: podinfo
+  cluster: {{ cookiecutter.cluster_prod }}
+  environment: prod
+  releaseName: podinfo-prod
+  targetRevision: podinfo-6.13.0  # pinned release tag (kept behind stage)
+----
+
+The key idea is the per-element `targetRevision`:
+
+* `{{ cookiecutter.cluster_dev }}` tracks the charts repo's `main` branch, so it
+  always runs the latest chart - this is where you see changes first.
+* `{{ cookiecutter.cluster_stage }}` and `{{ cookiecutter.cluster_prod }}` pin
+  released tags. Stage is kept *ahead of* prod so a release can soak in stage
+  before it is promoted to prod.
+
+Each generated `Application` is named `<appName>-<environment>` (e.g.
+`podinfo-dev`) and is deployed into the `<environment>-targetns` namespace
+(`dev-targetns`, `stage-targetns`, `prod-targetns`) on the named cluster.
+
+== `bootstrap/appset-addons.yaml` - cluster add-ons
+
+A `matrix` generator that crosses an add-on list with the cluster list, so every
+add-on is deployed to every cluster at the *same* version. The sample add-on is
+`metrics-server`, pulled from its upstream public Helm repo and installed into
+`kube-system`. Unlike applications, add-ons are not environment-versioned - they
+are platform plumbing that should be consistent everywhere.
+
+== Multi-source applications
+
+Both `ApplicationSet` resources use Argo CD multi-source applications. Every
+generated `Application` combines two sources:
+
+. *Values* - from this repository, at
+  `clusters/<cluster>/apps/<appName>.yaml` (apps) or
+  `clusters/<cluster>/addons/<appName>.yaml` (add-ons).
+. *Chart* - from elsewhere: the private charts repo
+  (`{{ cookiecutter.repo_charts }}`, path `charts/<appName>`) for applications,
+  or the add-on's upstream public Helm repo for add-ons.
+
+This is why the same chart can run on three clusters with three different
+behaviours: the chart is shared, but each cluster reads its own values file.
+
+[source,text]
+----
+clusters/
+  {{ cookiecutter.cluster_dev }}/
+    apps/podinfo.yaml        # 1 replica, debug logs, no HPA
+    addons/metrics-server.yaml
+  {{ cookiecutter.cluster_stage }}/
+    apps/podinfo.yaml        # 2 replicas, info logs, HPA on
+    addons/metrics-server.yaml
+  {{ cookiecutter.cluster_prod }}/
+    apps/podinfo.yaml        # 3 replicas, larger limits, HPA on
+    addons/metrics-server.yaml
+----
+
+For applications, `ignoreMissingValueFiles` is `false` - a missing values file
+is an error, so every `(app x cluster)` element must have a matching file. For
+add-ons it is `true`, so a cluster can take chart defaults by simply not
+shipping a values file.
+
+== Clusters, namespaces, and destinations
+
+* Clusters are targeted *by name* - the name each cluster is registered under in
+  Argo CD (`{{ cookiecutter.cluster_dev }}`, `{{ cookiecutter.cluster_stage }}`,
+  `{{ cookiecutter.cluster_prod }}`). Those names must exist in Argo CD before
+  the generated `Application` can sync.
+* Applications land in `<environment>-targetns`; add-ons land in the namespace
+  declared by the add-on (metrics-server -> `kube-system`).
+
+== Sync behaviour
+
+* Both `ApplicationSet` resources sync automatically with `prune: true` and
+  self-heal enabled, so drift is corrected and removed elements are cleaned up.
+* `CreateNamespace=true` creates the destination namespace on first sync.
+* `ServerSideApply=true` is used to apply large resources reliably.
+* `preserveResourcesOnDeletion: true` on the `ApplicationSet` means deleting the
+  set does not cascade-delete the workloads it manages.
+
+== Where to go next
+
+To actually change what runs - edit values, add an app, or move a release from
+dev to prod - see link:developing-and-promoting-apps.adoc[Developing & Promoting Apps].

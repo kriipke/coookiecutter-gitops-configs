@@ -11,6 +11,15 @@ It is hosted at:
 
 https://github.com/{{ cookiecutter.repo_appsets }}
 
+== Documentation
+
+In-depth docs live under `docs/`:
+
+* link:docs/how-it-works.adoc[How It Works] - architecture, the bootstrap flow,
+  the two `ApplicationSet` resources, and multi-source applications.
+* link:docs/developing-and-promoting-apps.adoc[Developing & Promoting Apps] - the
+  workflow for developing apps and promoting them from dev to prod.
+
 == Repository Layout
 
 [source,text]
@@ -29,12 +38,14 @@ clusters/
   {{ cookiecutter.cluster_prod }}/
     apps/
     addons/
+docs/                       <6>
 ----
 <1> Root Argo CD `Application` that points Argo CD at the `bootstrap/` directory.
 <2> `ApplicationSet` that deploys platform workload applications.
 <3> `ApplicationSet` that deploys cluster add-ons.
 <4> Per-cluster Helm values for applications.
 <5> Per-cluster Helm values for add-ons.
+<6> Documentation: how the repo works and how to develop and promote apps.
 
 == How It Works
 
