@@ -31,6 +31,26 @@ Keeping config and charts apart means a chart can be released independently, and
 a cluster's behaviour is changed by a reviewable commit in this repo rather than
 by mutating anything in place.
 
+.The two-repository model
+[mermaid]
+----
+flowchart LR
+  subgraph cfg["Configuration — {{ cookiecutter.repo_appsets }} (this repo)"]
+    a1["bootstrap/ — ApplicationSets"]
+    a2["clusters/ — per-cluster values"]
+  end
+  subgraph chartrepo["Application charts — {{ cookiecutter.repo_charts }}"]
+    c1["charts/&lt;app&gt; @ &lt;app&gt;-&lt;semver&gt; tags"]
+  end
+  upstream[("Upstream public Helm repos<br/>(add-on charts)")]
+  argo(["Argo CD"])
+
+  a1 --> argo
+  a2 -.->|"values"| argo
+  c1 -.->|"app chart"| argo
+  upstream -.->|"add-on chart"| argo
+----
+
 == The bootstrap flow
 
 Argo CD is brought online with a single, one-time `kubectl apply`:
@@ -125,6 +145,22 @@ generated `Application` combines two sources:
 . *Chart* - from elsewhere: the private charts repo
   (`{{ cookiecutter.repo_charts }}`, path `charts/<appName>`) for applications,
   or the add-on's upstream public Helm repo for add-ons.
+
+.A generated Application merges two sources
+[mermaid]
+----
+flowchart LR
+  thisrepo[("{{ cookiecutter.repo_appsets }}<br/>(values)")]
+  chart[("Chart source<br/>{{ cookiecutter.repo_charts }} or upstream Helm repo")]
+  merge["repo-server: helm template<br/>(chart + per-cluster values)"]
+  out["Rendered manifests"]
+  dest(["Target cluster + namespace"])
+
+  thisrepo -.->|"$values/clusters/&lt;cluster&gt;/.../&lt;app&gt;.yaml"| merge
+  chart -.->|"chart @ targetRevision"| merge
+  merge --> out
+  out --> dest
+----
 
 This is why the same chart can run on each cluster with different behaviour: the
 chart is shared, but every cluster reads its own values file. There are two

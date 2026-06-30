@@ -4,6 +4,40 @@ A Cookiecutter template for generating an Argo CD GitOps configuration repositor
 
 The generated repository is intended to act as the application-set configuration layer for a Kubernetes platform. It bootstraps Argo CD from a Git repository, defines `ApplicationSet` resources, and stores per-cluster Helm values for platform add-ons and applications.
 
+== Overview
+
+.How the template fits together
+[mermaid]
+----
+flowchart LR
+  cc["cookiecutter-gitops-multirepo<br/>(this template)"]
+
+  subgraph gen["Generated GitOps repo — repo_appsets"]
+    appsets["bootstrap.yaml<br/>bootstrap/ — 2 ApplicationSets<br/>clusters/ — per-cluster values"]
+  end
+
+  charts[("Helm charts repo<br/>repo_charts — private")]
+  upstream[("Upstream public<br/>Helm repos")]
+  argo(["Argo CD"])
+  dev(["cluster-dev"])
+  stage(["cluster-stage"])
+  prod(["cluster-prod"])
+
+  cc -->|"cookiecutter ."| appsets
+  appsets -->|"kubectl apply bootstrap.yaml"| argo
+  charts -.->|"app charts @ pinned tag"| argo
+  upstream -.->|"add-on charts"| argo
+  argo --> dev
+  argo --> stage
+  argo --> prod
+----
+
+The template renders the **configuration** repo (`repo_appsets`). At runtime Argo CD
+combines that config with **charts** from a separate private repo (`repo_charts`)
+and add-on charts pulled from upstream public Helm repositories, then reconciles
+every cluster. The two-repository split is described under
+<<Repository Relationships>>.
+
 == What This Template Generates
 
 The template creates a GitOps repository with this shape (cluster directory names come from the `cluster_dev`, `cluster_stage`, and `cluster_prod` inputs; their defaults are shown):

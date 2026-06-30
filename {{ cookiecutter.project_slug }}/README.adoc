@@ -107,6 +107,27 @@ Argo CD to discover and manage everything else:
 kubectl apply -n {{ cookiecutter.argo_namespace }} -f bootstrap.yaml
 ----
 
+.From one apply to running workloads
+[mermaid]
+----
+flowchart TD
+  apply["kubectl apply bootstrap.yaml"] --> boot(["bootstrap (Application)"])
+  boot -->|"syncs bootstrap/ recursively"| apps["applications (ApplicationSet)"]
+  boot --> addons["addons (ApplicationSet)"]
+
+  apps --> pdev["podinfo-dev"]
+  apps --> pstage["podinfo-stage"]
+  apps --> pprod["podinfo-prod"]
+  addons --> ms["metrics-server (every cluster)"]
+
+  pdev --> cdev(["{{ cookiecutter.cluster_dev }}<br/>chart revision: main"])
+  pstage --> cstage(["{{ cookiecutter.cluster_stage }}<br/>chart revision: pinned tag (ahead of prod)"])
+  pprod --> cprod(["{{ cookiecutter.cluster_prod }}<br/>chart revision: pinned tag"])
+  ms --> cdev
+  ms --> cstage
+  ms --> cprod
+----
+
 The `bootstrap/` directory contains two `ApplicationSet` resources:
 
 * `appset-apps.yaml` - deploys the platform applications to every cluster, with

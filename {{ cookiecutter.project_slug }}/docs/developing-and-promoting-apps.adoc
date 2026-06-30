@@ -46,6 +46,21 @@ The environments form a ladder:
 | Only proven releases.
 |===
 
+.Promotion ladder — a release moves dev -> stage -> prod
+[mermaid]
+----
+flowchart LR
+  rel["Chart release<br/>&lt;app&gt;-&lt;semver&gt;"]
+  dev(["{{ cookiecutter.cluster_dev }}<br/>tracks main — automatic"])
+  stage(["{{ cookiecutter.cluster_stage }}<br/>pinned tag — soak"])
+  prod(["{{ cookiecutter.cluster_prod }}<br/>pinned tag"])
+
+  rel -->|"on main"| dev
+  dev -->|"promote: bump stage tag"| stage
+  stage -->|"promote: bump prod tag (manual)"| prod
+  stage <-.->|"values identical (lockstep)"| prod
+----
+
 Values-wise there are really two profiles, not three:
 `{{ cookiecutter.cluster_dev }}` is a deliberately small iteration profile, while
 `{{ cookiecutter.cluster_stage }}` and `{{ cookiecutter.cluster_prod }}` share an

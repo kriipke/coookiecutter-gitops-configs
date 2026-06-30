@@ -99,6 +99,34 @@ Actions -> Variables):
 
 == Promotion flows
 
+.Automated promotion and the render gate
+[mermaid]
+----
+flowchart TD
+  crel["Charts repo: merge to main<br/>tag &lt;app&gt;-&lt;version&gt;"]
+  pstage["promote.yml — bump stage tag,<br/>open stage PR"]
+  gate1{"render-gate on the PR"}
+  fix1["Migrate stage values in the PR"]
+  soak["Merge -> soak on {{ cookiecutter.cluster_stage }}"]
+  pprod["promote-prod.yml (manual)<br/>soak-guard + bump prod tag,<br/>open prod PR"]
+  gate2{"render-gate on the PR"}
+  fix2["Migrate prod values (lockstep)"]
+  review["Manual review + merge<br/>(branch protection + CODEOWNERS)"]
+  prod(["Argo CD rolls {{ cookiecutter.cluster_prod }}"])
+
+  crel -->|"repository_dispatch"| pstage
+  pstage --> gate1
+  gate1 -->|"fail — MAJOR needs values migration"| fix1
+  fix1 --> gate1
+  gate1 -->|"pass"| soak
+  soak --> pprod
+  pprod --> gate2
+  gate2 -->|"fail"| fix2
+  fix2 --> gate2
+  gate2 -->|"pass"| review
+  review --> prod
+----
+
 * *dev* tracks the charts `main` branch and updates automatically via Argo CD; the
   charts-repo CI keeps `main` green.
 * *stage* (automatic): a chart release dispatches `promote.yml`, which bumps the
