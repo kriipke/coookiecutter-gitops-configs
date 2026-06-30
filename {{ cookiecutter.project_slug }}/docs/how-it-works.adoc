@@ -126,20 +126,21 @@ generated `Application` combines two sources:
   (`{{ cookiecutter.repo_charts }}`, path `charts/<appName>`) for applications,
   or the add-on's upstream public Helm repo for add-ons.
 
-This is why the same chart can run on three clusters with three different
-behaviours: the chart is shared, but each cluster reads its own values file.
+This is why the same chart can run on each cluster with different behaviour: the
+chart is shared, but every cluster reads its own values file. There are two
+profiles - a small dev profile and a production profile shared by stage and prod.
 
 [source,text]
 ----
 clusters/
   {{ cookiecutter.cluster_dev }}/
-    apps/podinfo.yaml        # 1 replica, debug logs, no HPA
+    apps/podinfo.yaml        # 1 replica, debug logs, no HPA (iteration profile)
     addons/metrics-server.yaml
   {{ cookiecutter.cluster_stage }}/
-    apps/podinfo.yaml        # 2 replicas, info logs, HPA on
+    apps/podinfo.yaml        # production profile (identical to prod)
     addons/metrics-server.yaml
   {{ cookiecutter.cluster_prod }}/
-    apps/podinfo.yaml        # 3 replicas, larger limits, HPA on
+    apps/podinfo.yaml        # production profile: HA, autoscaled, hardened
     addons/metrics-server.yaml
 ----
 

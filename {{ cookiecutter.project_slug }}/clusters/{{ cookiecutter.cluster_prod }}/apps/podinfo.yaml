@@ -1,5 +1,11 @@
 # podinfo values - prod (chart pinned to podinfo-6.13.0)
 # Schema: https://github.com/stefanprodan/podinfo/blob/master/charts/podinfo/values.yaml
+#
+# Production profile: highly available, autoscaled, observable, and hardened.
+# This is the most conservative rung on the dev -> stage -> prod ladder
+# (see docs/developing-and-promoting-apps.adoc).
+
+# Floor for the HPA. Three replicas survive a single pod/node loss.
 replicaCount: 3
 
 logLevel: info
@@ -8,18 +14,98 @@ ui:
   color: "#34577c"
   message: "Hello from prod"
 
+# Requests reflect steady-state usage (what the scheduler reserves); limits cap
+# the blast radius of a misbehaving pod.
 resources:
-  limits:
-    cpu: "500m"
-    memory: "128Mi"
   requests:
     cpu: "250m"
     memory: "64Mi"
+  limits:
+    cpu: "500m"
+    memory: "128Mi"
 
+# Autoscale on CPU utilisation and absolute memory. minReplicas is replicaCount
+# (3); scale out to 8 under load. NOTE: hpa.cpu is a percent (Utilization) while
+# hpa.memory is an AverageValue quantity, not a percentage.
 hpa:
   enabled: true
   maxReplicas: 8
-  cpu: 75
+  cpu: 75          # target average CPU utilisation across pods (%)
+  memory: "100Mi"  # scale out when average pod memory exceeds this
 
+# Never let a voluntary disruption (node drain, rollout) drop prod below two
+# serving pods.
+podDisruptionBudget:
+  minAvailable: 2
+
+# Spread replicas across nodes and zones so one node/zone failure can't take the
+# whole app down. ScheduleAnyway keeps pods schedulable on smaller clusters.
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: podinfo
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: podinfo
+
+# Dedicated ServiceAccount instead of the namespace default.
+serviceAccount:
+  enabled: true
+
+# Scrape metrics with the Prometheus Operator (requires the operator/CRDs).
+serviceMonitor:
+  enabled: true
+  interval: 15s
+
+# Probe timings tuned for prod: a startup probe gives the app room to come up
+# before liveness can restart it, and readiness gates traffic until it's ready.
+probes:
+  readiness:
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+    successThreshold: 1
+  liveness:
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+    successThreshold: 1
+  startup:
+    enable: true
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 5
+    failureThreshold: 30
+    successThreshold: 1
+
+# Run unprivileged and non-root with a default seccomp profile.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 100
+  runAsGroup: 100
+  fsGroup: 100
+  seccompProfile:
+    type: RuntimeDefault
+
+# Lock down the container: no privilege escalation, drop all capabilities.
+securityContext:
+  allowPrivilegeEscalation: false
+  runAsNonRoot: true
+  capabilities:
+    drop:
+      - ALL
+  # readOnlyRootFilesystem: true requires writable volumes for podinfo's
+  # data/tmp paths - enable it only once those volumes are mounted.
+
+# Keep the sample off public ingress; front it with your platform's
+# gateway/service mesh instead.
 ingress:
   enabled: false

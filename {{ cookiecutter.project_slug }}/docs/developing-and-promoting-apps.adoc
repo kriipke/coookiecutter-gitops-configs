@@ -21,8 +21,9 @@ promote each one independently:
 
 | Configuration (values)
 | `clusters/<cluster>/apps/<appName>.yaml`
-| Editing the next environment's values file to match what you proved out in the
-  one below it.
+| Changing it on stage first, then applying the *same* change to prod.
+  `{{ cookiecutter.cluster_stage }}` and `{{ cookiecutter.cluster_prod }}` are
+  kept identical (see below); `{{ cookiecutter.cluster_dev }}` is independent.
 |===
 
 The environments form a ladder:
@@ -33,16 +34,22 @@ The environments form a ladder:
 
 | `{{ cookiecutter.cluster_dev }}`
 | `main` (branch)
-| Always-latest. Chart changes appear here automatically.
+| Always-latest, lightweight iteration profile (single replica, debug logs, no
+  autoscaling). Chart changes appear here automatically.
 
 | `{{ cookiecutter.cluster_stage }}`
 | pinned tag (ahead of prod)
-| Soak a release before it reaches prod.
+| Soak a release on the *exact prod values* before it reaches prod.
 
 | `{{ cookiecutter.cluster_prod }}`
 | pinned tag
 | Only proven releases.
 |===
+
+Values-wise there are really two profiles, not three:
+`{{ cookiecutter.cluster_dev }}` is a deliberately small iteration profile, while
+`{{ cookiecutter.cluster_stage }}` and `{{ cookiecutter.cluster_prod }}` share an
+identical production profile so stage genuinely tests what prod runs.
 
 == Develop on dev
 
@@ -96,6 +103,10 @@ clusters/{{ cookiecutter.cluster_dev }}/apps/myapp.yaml
 clusters/{{ cookiecutter.cluster_stage }}/apps/myapp.yaml
 clusters/{{ cookiecutter.cluster_prod }}/apps/myapp.yaml
 ----
++
+NOTE: Make the `{{ cookiecutter.cluster_stage }}` and `{{ cookiecutter.cluster_prod }}`
+values *identical* so stage soaks the real prod config; the
+`{{ cookiecutter.cluster_dev }}` file can be a lighter profile.
 . *Commit and push* to `{{ cookiecutter.repo_appsets_branch }}`. The
   `applications` `ApplicationSet` generates `myapp-dev`, `myapp-stage`, and
   `myapp-prod`, and Argo CD syncs them.
@@ -138,19 +149,32 @@ Keep stage at least one release ahead of prod so there is always a soak step.
 
 == Promote configuration changes
 
-Values changes ride the same ladder, just in the per-cluster files instead of
-the appset. After proving a setting on dev:
+Configuration changes ride the ladder in the per-cluster values files instead of
+the appset. Because `{{ cookiecutter.cluster_stage }}` runs the *exact* prod
+values, promoting a prod config change is a straight copy with no per-environment
+scaling to adjust:
 
-. Copy the relevant change from
-  `clusters/{{ cookiecutter.cluster_dev }}/apps/<appName>.yaml` into
-  `clusters/{{ cookiecutter.cluster_stage }}/apps/<appName>.yaml`, adjusting for
-  stage's scale.
-. After it soaks, apply the equivalent change to
+. Make the change in
+  `clusters/{{ cookiecutter.cluster_stage }}/apps/<appName>.yaml` and let it
+  soak. Verify the app is healthy in Argo CD.
+. Once stage looks good, apply the *identical* change to
   `clusters/{{ cookiecutter.cluster_prod }}/apps/<appName>.yaml`.
 
-Do not blindly copy whole files between environments - replica counts, resource
-limits, and HPA settings are intentionally larger as you move up the ladder.
-Promote the *change*, not the entire file.
+Keep these two files in sync - drift between them means stage is no longer
+testing what prod runs. A quick guard:
+
+[source,sh]
+----
+diff clusters/{{ cookiecutter.cluster_stage }}/apps/<appName>.yaml \
+     clusters/{{ cookiecutter.cluster_prod }}/apps/<appName>.yaml
+----
+
+The only expected differences are environment identity (for example the
+`ui.message`), not sizing, autoscaling, or hardening.
+
+`{{ cookiecutter.cluster_dev }}` is the exception: it is a lightweight iteration
+profile and is tuned independently, so you can change it freely without touching
+stage or prod.
 
 == Rollback
 
@@ -174,8 +198,13 @@ recovery action is always "make Git correct again".
 | Change dev to latest chart
 | Merge to `main` in `{{ cookiecutter.repo_charts }}` (automatic).
 
-| Change an app's config on one cluster
-| Edit `clusters/<cluster>/apps/<appName>.yaml`.
+| Change prod config
+| Edit the stage values file, soak, then apply the same change to prod (kept in
+  lockstep).
+
+| Change dev config
+| Edit `clusters/{{ cookiecutter.cluster_dev }}/apps/<appName>.yaml` (independent,
+  lighter profile).
 
 | Promote a release to stage
 | Bump the stage element's `targetRevision` in `bootstrap/appset-apps.yaml`.
