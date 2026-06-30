@@ -38,6 +38,7 @@ snippet, are in [Promoting Chart Upgrades Safely](docs/promoting-chart-upgrades.
     | Where | What | Purpose |
     | --- | --- | --- |
     | this repo (`{{ cookiecutter.repo_appsets }}`) | secret `CHARTS_DEPLOY_KEY` | Read-only SSH deploy key on `{{ cookiecutter.repo_charts }}` so CI can clone a chart at its pinned tag to render it. |
+    | this repo (`{{ cookiecutter.repo_appsets }}`) | secret `PROMOTE_PR_TOKEN` (recommended) | PAT / GitHub App token with `contents:write` + `pull-requests:write` on this repo. The promotion workflows open their PRs with it so the `render-gate` runs on them — PRs opened with the default `GITHUB_TOKEN` do **not** trigger `pull_request` workflows. If unset, the workflows fall back to `GITHUB_TOKEN` and the gate must be run by hand. |
     | charts repo (`{{ cookiecutter.repo_charts }}`) | secret `PROMOTE_DISPATCH_TOKEN` | PAT / GitHub App token with `contents:write` on `{{ cookiecutter.repo_appsets }}` so a chart release can trigger stage promotion (the default `GITHUB_TOKEN` cannot dispatch across repos). |
     | this repo (setting) | *Allow GitHub Actions to create and approve pull requests* | Lets the promotion workflows open PRs (Settings -> Actions -> General). |
     | this repo (setting) | Branch protection on `{{ cookiecutter.repo_appsets_branch }}` | Require the `render-gate` status check and Code Owners review (see `.github/CODEOWNERS`) so prod promotion is a true manual gate. |
@@ -92,18 +93,18 @@ kubectl apply -n {{ cookiecutter.argo_namespace }} -f bootstrap.yaml
 
 ```mermaid
 flowchart TD
-  apply["kubectl apply bootstrap.yaml"] --> boot(["bootstrap (Application)"])
-  boot -->|"syncs bootstrap/ recursively"| apps["applications (ApplicationSet)"]
-  boot --> addons["addons (ApplicationSet)"]
+  apply["kubectl apply<br/>bootstrap.yaml"] --> boot["bootstrap<br/>Application"]
+  boot -->|"syncs bootstrap/"| apps["applications<br/>ApplicationSet"]
+  boot --> addons["addons<br/>ApplicationSet"]
 
   apps --> pdev["podinfo-dev"]
   apps --> pstage["podinfo-stage"]
   apps --> pprod["podinfo-prod"]
-  addons --> ms["metrics-server (every cluster)"]
+  addons --> ms["metrics-server"]
 
-  pdev --> cdev(["{{ cookiecutter.cluster_dev }}<br/>chart revision: main"])
-  pstage --> cstage(["{{ cookiecutter.cluster_stage }}<br/>chart revision: pinned tag (ahead of prod)"])
-  pprod --> cprod(["{{ cookiecutter.cluster_prod }}<br/>chart revision: pinned tag"])
+  pdev -->|"chart: main"| cdev["{{ cookiecutter.cluster_dev }}"]
+  pstage -->|"chart: pinned tag"| cstage["{{ cookiecutter.cluster_stage }}"]
+  pprod -->|"chart: pinned tag"| cprod["{{ cookiecutter.cluster_prod }}"]
   ms --> cdev
   ms --> cstage
   ms --> cprod

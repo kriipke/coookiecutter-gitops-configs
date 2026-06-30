@@ -10,22 +10,18 @@ The generated repository is intended to act as the application-set configuration
 
 ```mermaid
 flowchart LR
-  cc["cookiecutter-gitops-multirepo<br/>(this template)"]
+  cc["cookiecutter<br/>template"]
+  appsets["GitOps repo<br/>repo_appsets"]
+  charts["charts repo<br/>repo_charts"]
+  upstream["upstream<br/>Helm repos"]
+  argo["Argo CD"]
+  dev["cluster-dev"]
+  stage["cluster-stage"]
+  prod["cluster-prod"]
 
-  subgraph gen["Generated GitOps repo — repo_appsets"]
-    appsets["bootstrap.yaml<br/>bootstrap/ — 2 ApplicationSets<br/>clusters/ — per-cluster values"]
-  end
-
-  charts[("Helm charts repo<br/>repo_charts — private")]
-  upstream[("Upstream public<br/>Helm repos")]
-  argo(["Argo CD"])
-  dev(["cluster-dev"])
-  stage(["cluster-stage"])
-  prod(["cluster-prod"])
-
-  cc -->|"cookiecutter ."| appsets
-  appsets -->|"kubectl apply bootstrap.yaml"| argo
-  charts -.->|"app charts @ pinned tag"| argo
+  cc -->|"cookiecutter"| appsets
+  appsets -->|"kubectl apply"| argo
+  charts -.->|"app charts"| argo
   upstream -.->|"add-on charts"| argo
   argo --> dev
   argo --> stage
@@ -91,8 +87,8 @@ The prompts are defined in `cookiecutter.json`:
 | `cluster_dev` | Name of the dev cluster, as registered in Argo CD. |
 | `cluster_stage` | Name of the stage cluster, as registered in Argo CD. |
 | `cluster_prod` | Name of the prod cluster, as registered in Argo CD. |
-| `init_git` | Declared input. Currently not referenced by any hook or rendered file. |
-| `github_username` | Declared input. Currently not referenced by any hook or rendered file. |
+| `init_git` | Whether the `post_gen_project.py` hook runs `git init` and creates an initial commit in the generated repository (on the `repo_appsets_branch` branch). Defaults to `true`. |
+| `github_username` | GitHub org or user that owns the release-sensitive paths (`bootstrap/`, `clusters/<prod>/`, `.github/`). Rendered into the generated `.github/CODEOWNERS`. |
 
 ## Prerequisites
 
@@ -120,7 +116,7 @@ Or run it directly from GitHub:
 cookiecutter gh:kriipke/cookiecutter-gitops-multirepo
 ```
 
-Cookiecutter writes the generated repository into the selected `project_slug` directory.
+Cookiecutter writes the generated repository into the selected `project_slug` directory. With `init_git` left as `true` (the default), the `post_gen_project.py` hook initializes it as a Git repository with an initial commit on the `repo_appsets_branch` branch.
 
 ## Configure the Generated Repository
 
@@ -154,8 +150,6 @@ The generated `ApplicationSet` resources use Argo CD multi-source applications s
 
 This repository is the template source. The nested `{{ cookiecutter.project_slug }}/README.md` file documents the generated repository, not this template repository.
 
-The repository also carries auxiliary tooling that is not part of the rendered output, including a GitHub Actions PR labeler workflow under `.github/workflows/` and work-in-progress helper files (`Makefile`, `vendir.yml`).
-
 The generated repository also ships CI under `{{ cookiecutter.project_slug }}/.github/`: a render gate plus promotion workflows (documented in the generated `docs/promoting-chart-upgrades.md`). These workflow, composite-action, and script files are listed in `_copy_without_render` in `cookiecutter.json` so they are copied verbatim - GitHub Actions `${{ ... }}` expressions would otherwise collide with cookiecutter's Jinja `{{ ... }}` and break rendering. As a consequence those files must contain **no cookiecutter variables**; they self-discover apps, clusters, tags, and the charts repo by parsing `bootstrap/appset-apps.yaml` at runtime. (`.github/CODEOWNERS` is intentionally *not* copied verbatim, so it can render the prod cluster name.)
 
 When changing the template:
@@ -168,4 +162,4 @@ When changing the template:
 
 ## License
 
-No license file is currently included. Add one before distributing this template broadly.
+Released under the MIT License. See [`LICENSE`](LICENSE).

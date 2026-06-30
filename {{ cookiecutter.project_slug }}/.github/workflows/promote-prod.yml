@@ -85,7 +85,12 @@ jobs:
         if: steps.bump.outputs.noop != 'true'
         uses: peter-evans/create-pull-request@v6
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # Open the PR with a PAT/App token so render-gate (on: pull_request) runs
+          # on it. GitHub does NOT trigger pull_request workflows for PRs created
+          # with the default GITHUB_TOKEN, so the gate would otherwise never run on
+          # the promotion PR. Falls back to GITHUB_TOKEN (run the gate manually).
+          # See docs/promoting-chart-upgrades.md.
+          token: ${{ secrets.PROMOTE_PR_TOKEN || secrets.GITHUB_TOKEN }}
           branch: promote/${{ steps.in.outputs.app }}-prod-${{ steps.in.outputs.tag }}
           title: "promote(prod): ${{ steps.in.outputs.app }} ${{ steps.bump.outputs.old }} -> ${{ steps.in.outputs.tag }}"
           commit-message: "promote(prod): ${{ steps.in.outputs.app }} -> ${{ steps.in.outputs.tag }}"

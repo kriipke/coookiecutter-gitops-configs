@@ -27,15 +27,15 @@ The environments form a ladder:
 
 ```mermaid
 flowchart LR
-  rel["Chart release<br/>&lt;app&gt;-&lt;semver&gt;"]
-  dev(["{{ cookiecutter.cluster_dev }}<br/>tracks main — automatic"])
-  stage(["{{ cookiecutter.cluster_stage }}<br/>pinned tag — soak"])
-  prod(["{{ cookiecutter.cluster_prod }}<br/>pinned tag"])
+  rel["chart release<br/>&lt;app&gt;-&lt;semver&gt;"]
+  dev["{{ cookiecutter.cluster_dev }}<br/>main (auto)"]
+  stage["{{ cookiecutter.cluster_stage }}<br/>pinned (soak)"]
+  prod["{{ cookiecutter.cluster_prod }}<br/>pinned"]
 
   rel -->|"on main"| dev
-  dev -->|"promote: bump stage tag"| stage
-  stage -->|"promote: bump prod tag (manual)"| prod
-  stage <-.->|"values identical (lockstep)"| prod
+  dev -->|"bump stage tag"| stage
+  stage -->|"bump prod tag"| prod
+  stage <-.->|"lockstep"| prod
 ```
 
 Values-wise there are really two profiles, not three:

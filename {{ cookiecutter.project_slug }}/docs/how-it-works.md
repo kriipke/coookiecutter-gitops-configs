@@ -25,15 +25,15 @@ by mutating anything in place.
 
 ```mermaid
 flowchart LR
-  subgraph cfg["Configuration — {{ cookiecutter.repo_appsets }} (this repo)"]
-    a1["bootstrap/ — ApplicationSets"]
-    a2["clusters/ — per-cluster values"]
+  subgraph cfg["Config repo (this repo)"]
+    a1["bootstrap/<br/>ApplicationSets"]
+    a2["clusters/<br/>values"]
   end
-  subgraph chartrepo["Application charts — {{ cookiecutter.repo_charts }}"]
-    c1["charts/&lt;app&gt; @ &lt;app&gt;-&lt;semver&gt; tags"]
+  subgraph chartrepo["Charts repo"]
+    c1["charts/&lt;app&gt;<br/>release tags"]
   end
-  upstream[("Upstream public Helm repos<br/>(add-on charts)")]
-  argo(["Argo CD"])
+  upstream["upstream<br/>Helm repos"]
+  argo["Argo CD"]
 
   a1 --> argo
   a2 -.->|"values"| argo
@@ -137,14 +137,14 @@ generated `Application` combines two sources:
 
 ```mermaid
 flowchart LR
-  thisrepo[("{{ cookiecutter.repo_appsets }}<br/>(values)")]
-  chart[("Chart source<br/>{{ cookiecutter.repo_charts }} or upstream Helm repo")]
-  merge["repo-server: helm template<br/>(chart + per-cluster values)"]
-  out["Rendered manifests"]
-  dest(["Target cluster + namespace"])
+  thisrepo["values file<br/>(this repo)"]
+  chart["chart<br/>(repo / upstream)"]
+  merge["repo-server<br/>helm template"]
+  out["rendered<br/>manifests"]
+  dest["cluster +<br/>namespace"]
 
-  thisrepo -.->|"$values/clusters/&lt;cluster&gt;/.../&lt;app&gt;.yaml"| merge
-  chart -.->|"chart @ targetRevision"| merge
+  thisrepo -.->|"values"| merge
+  chart -.->|"chart @ tag"| merge
   merge --> out
   out --> dest
 ```

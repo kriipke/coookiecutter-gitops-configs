@@ -80,20 +80,20 @@ Actions -> Variables):
 
 ```mermaid
 flowchart TD
-  crel["Charts repo: merge to main<br/>tag &lt;app&gt;-&lt;version&gt;"]
-  pstage["promote.yml — bump stage tag,<br/>open stage PR"]
-  gate1{"render-gate on the PR"}
-  fix1["Migrate stage values in the PR"]
-  soak["Merge -> soak on {{ cookiecutter.cluster_stage }}"]
-  pprod["promote-prod.yml (manual)<br/>soak-guard + bump prod tag,<br/>open prod PR"]
-  gate2{"render-gate on the PR"}
-  fix2["Migrate prod values (lockstep)"]
-  review["Manual review + merge<br/>(branch protection + CODEOWNERS)"]
-  prod(["Argo CD rolls {{ cookiecutter.cluster_prod }}"])
+  crel["charts repo<br/>tag release"]
+  pstage["promote.yml<br/>stage PR"]
+  gate1{"render-gate"}
+  fix1["migrate<br/>stage values"]
+  soak["merge +<br/>soak stage"]
+  pprod["promote-prod<br/>(manual)"]
+  gate2{"render-gate"}
+  fix2["migrate<br/>prod values"]
+  review["review +<br/>merge"]
+  prod["Argo CD<br/>rolls prod"]
 
-  crel -->|"repository_dispatch"| pstage
+  crel -->|"dispatch"| pstage
   pstage --> gate1
-  gate1 -->|"fail — MAJOR needs values migration"| fix1
+  gate1 -->|"fail: MAJOR"| fix1
   fix1 --> gate1
   gate1 -->|"pass"| soak
   soak --> pprod
@@ -107,9 +107,11 @@ flowchart TD
 - **dev** tracks the charts `main` branch and updates automatically via Argo CD; the
   charts-repo CI keeps `main` green.
 - **stage** (automatic): a chart release dispatches `promote.yml`, which bumps the
-  stage `targetRevision` and opens a PR. The render gate runs on it. Non-breaking
-  bumps can auto-merge (`AUTO_MERGE_STAGE`); MAJOR bumps open a flagged PR that
-  fails until values are migrated.
+  stage `targetRevision` and opens a PR. The render gate runs on that PR **when it
+  is opened with `PROMOTE_PR_TOKEN`** (GitHub does not trigger `pull_request`
+  workflows for PRs created with the default `GITHUB_TOKEN` — see Required secrets).
+  Non-breaking bumps can auto-merge (`AUTO_MERGE_STAGE`); MAJOR bumps open a flagged
+  PR that fails until values are migrated.
 - **prod** (manual): run the `promote-prod` workflow (`workflow_dispatch`). It
   enforces a **soak guard** (the tag must be one stage currently/previously ran),
   bumps prod, and opens a PR that is **never auto-merged**. Back this with branch
@@ -247,6 +249,7 @@ jobs:
 | Where | Name | Purpose |
 | --- | --- | --- |
 | this (appsets) repo | `CHARTS_DEPLOY_KEY` | Read-only SSH deploy key on `{{ cookiecutter.repo_charts }}` so the render gate can clone charts at a tag. |
+| this (appsets) repo | `PROMOTE_PR_TOKEN` (recommended) | PAT / GitHub App token with `contents:write` + `pull-requests:write` on this repo, used to open the promotion PRs. Required for the render gate to run on them: GitHub does not trigger `pull_request` workflows for PRs opened with the default `GITHUB_TOKEN`. If unset, the workflows fall back to `GITHUB_TOKEN` and you must run the gate by hand (re-open the PR, or `workflow_dispatch`). |
 | charts repo | `PROMOTE_DISPATCH_TOKEN` | PAT / GitHub App token with `contents:write` on `{{ cookiecutter.repo_appsets }}` to fire the `repository_dispatch` (the default `GITHUB_TOKEN` cannot). |
 | this repo (setting) | - | Enable **Allow GitHub Actions to create and approve pull requests** so the promotion workflows can open PRs. |
 | this repo (setting) | - | Branch protection on `{{ cookiecutter.repo_appsets_branch }}`: require the render gate status check and Code Owners review (see `.github/CODEOWNERS`). |
