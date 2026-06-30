@@ -1,165 +1,146 @@
 # cookiecutter-gitops-multirepo
 
-A Cookiecutter template for generating an Argo CD GitOps configuration repository.
+A **multi-level Cookiecutter template** for an Argo CD GitOps platform built on the
+two-repository (multirepo) model. One template repository, two selectable child
+templates:
 
-The generated repository is intended to act as the application-set configuration layer for a Kubernetes platform. It bootstraps Argo CD from a Git repository, defines `ApplicationSet` resources, and stores per-cluster Helm values for platform add-ons and applications.
-
-## Overview
-
-**How the template fits together**
+| Choose | Generates | Role |
+| --- | --- | --- |
+| **`gitops`** | the **GitOps AppSets** repo (`repo_appsets`) | Argo CD `ApplicationSet` resources under `bootstrap/` and per-cluster Helm values under `clusters/`. The single source of truth for *what runs where*. |
+| **`charts`** | the **Helm charts** repo (`repo_charts`) | Private application charts under `charts/<app>/`, released as `<app>-<version>` git tags. The chart source the AppSets reference. |
 
 ```mermaid
 flowchart LR
-  cc["cookiecutter<br/>template"]
-  appsets["GitOps repo<br/>repo_appsets"]
-  charts["charts repo<br/>repo_charts"]
+  cc["cookiecutter-gitops-multirepo<br/>(this template)"]
+  appsets["GitOps AppSets repo<br/>repo_appsets"]
+  charts["Helm charts repo<br/>repo_charts"]
   upstream["upstream<br/>Helm repos"]
   argo["Argo CD"]
-  dev["cluster-dev"]
-  stage["cluster-stage"]
-  prod["cluster-prod"]
+  clusters["dev / stage / prod"]
 
-  cc -->|"cookiecutter"| appsets
-  appsets -->|"kubectl apply"| argo
-  charts -.->|"app charts"| argo
+  cc -->|"select: gitops"| appsets
+  cc -->|"select: charts"| charts
+  appsets -->|"kubectl apply bootstrap.yaml"| argo
+  charts -.->|"app charts at &lt;app&gt;-&lt;version&gt;"| argo
   upstream -.->|"add-on charts"| argo
-  argo --> dev
-  argo --> stage
-  argo --> prod
+  charts -.->|"release.yml: tag + repository_dispatch"| appsets
+  argo --> clusters
 ```
 
-The template renders the **configuration** repo (`repo_appsets`). At runtime Argo CD
-combines that config with **charts** from a separate private repo (`repo_charts`)
-and add-on charts pulled from upstream public Helm repositories, then reconciles
-every cluster. The two-repository split is described under
-[Repository Relationships](#repository-relationships).
+At runtime Argo CD combines the **config** (AppSets repo) with **charts** (the charts
+repo) and add-on charts from upstream public Helm repos, then reconciles every
+cluster. The two repos are generated from the same inputs so they line up - the
+charts repo's `charts/<app>/` paths and `<app>-<version>` tags are exactly what the
+AppSets `ApplicationSet` pins.
 
-## What This Template Generates
+## How the multi-level template works
 
-The template creates a GitOps repository with this shape (cluster directory names come from the `cluster_dev`, `cluster_stage`, and `cluster_prod` inputs; their defaults are shown):
+This repository uses Cookiecutter's native
+[nested configuration](https://cookiecutter.readthedocs.io/en/stable/advanced/nested_config_files.html)
+(requires **Cookiecutter >= 2.5**). The root `cookiecutter.json` is a pure selector:
 
-```text
-<project_slug>/
-  README.md
-  bootstrap.yaml
-  bootstrap/
-    appset-apps.yaml
-    appset-addons.yaml
-  clusters/
-    cluster-dev/
-      addons/
-        metrics-server.yaml
-      apps/
-        podinfo.yaml
-    cluster-stage/
-      addons/
-      apps/
-    cluster-prod/
-      addons/
-      apps/
+```json
+{
+  "templates": {
+    "gitops": { "path": "./gitops", "title": "GitOps configs (AppSets) repo", "description": "..." },
+    "charts": { "path": "./charts", "title": "Helm charts repo", "description": "..." }
+  }
+}
 ```
 
-Key generated files:
+Each child (`gitops/`, `charts/`) is a complete, independent Cookiecutter template
+with its own `cookiecutter.json`, hooks, and template tree.
 
-- `bootstrap.yaml` - an Argo CD `Application` that recursively syncs the generated `bootstrap/` directory.
-- `bootstrap/appset-apps.yaml` - an `ApplicationSet` (list generator) for workload applications. It ships one entry per (app x cluster) and pins a chart revision per cluster: dev tracks the chart repo's `main` branch, while stage and prod pin released tags (stage ahead of prod, so changes soak before promotion). The sample app is `podinfo`.
-- `bootstrap/appset-addons.yaml` - an `ApplicationSet` (matrix generator) for cluster add-ons, deployed at the same version to every cluster. The sample add-on is `metrics-server`.
-- `clusters/<cluster>/apps/*.yaml` - per-cluster Helm values for applications.
-- `clusters/<cluster>/addons/*.yaml` - per-cluster Helm values for platform add-ons.
+> **One template per run.** The native selector generates **one** child at a time -
+> it is a menu, not a "generate both" orchestrator. To stand up a full platform,
+> run it twice (once for `gitops`, once for `charts`) and answer the shared inputs
+> (`platform_name`, `repo_appsets`, `repo_charts`, ...) **identically** both times so
+> the two repos reference each other correctly.
 
-Both `ApplicationSet` resources use Argo CD multi-source applications: per-cluster values come from this GitOps repository (under `clusters/`), while the chart comes from a separate source. Application charts are pulled from the private chart repository (`repo_charts`); add-on charts are pulled from each add-on's upstream public Helm repository (for example `https://kubernetes-sigs.github.io/metrics-server/` for metrics-server).
+### Generate
 
-The generated repository ships with its own `README.md` documenting the rendered layout.
-
-## Template Inputs
-
-The prompts are defined in `cookiecutter.json`:
-
-| Variable | Purpose |
-| --- | --- |
-| `platform_name` | Human-readable platform name used in the generated repository's documentation. |
-| `argo_namespace` | Namespace of the Argo CD installation. Used in `bootstrap.yaml` and the bootstrap `kubectl apply` command. Defaults to `argocd`. |
-| `project_name` | Display name for the generated GitOps repository. |
-| `project_slug` | Directory name for generated output. Derived from `project_name` by default (lowercased, with `:` removed and spaces replaced by underscores). The `pre_gen_project.py` hook rejects slugs that do not match `^[_a-zA-Z][_a-zA-Z0-9]+$`. |
-| `repo_appsets` | GitHub repository (`owner/name`) that will hold the generated ApplicationSet and values configuration. |
-| `repo_charts` | GitHub repository (`owner/name`) that contains the private Helm charts consumed by the applications `ApplicationSet`. |
-| `repo_appsets_branch` | Branch Argo CD should track for the ApplicationSet and values files. Defaults to `main`. |
-| `cluster_dev` | Name of the dev cluster, as registered in Argo CD. |
-| `cluster_stage` | Name of the stage cluster, as registered in Argo CD. |
-| `cluster_prod` | Name of the prod cluster, as registered in Argo CD. |
-| `init_git` | Whether the `post_gen_project.py` hook runs `git init` and creates an initial commit in the generated repository (on the `repo_appsets_branch` branch). Defaults to `true`. |
-| `github_username` | GitHub org or user that owns the release-sensitive paths (`bootstrap/`, `clusters/<prod>/`, `.github/`). Rendered into the generated `.github/CODEOWNERS`. |
-
-## Prerequisites
-
-Install:
-
-- Python 3
-- Cookiecutter
-- Git
-- `kubectl` with access to the Argo CD control-plane cluster (to apply `bootstrap.yaml`)
-- Access to the target GitHub repositories from Argo CD
-
-The `pre_gen_project.py` hook validates the generated `project_slug` before rendering: it must start with a letter or underscore and contain only letters, numbers, and underscores.
-
-## Generate a Repository
-
-Run Cookiecutter from a local checkout:
+Interactive selector (pick `gitops` or `charts` from the menu):
 
 ```bash
 cookiecutter .
-```
-
-Or run it directly from GitHub:
-
-```bash
+# or straight from GitHub:
 cookiecutter gh:kriipke/cookiecutter-gitops-multirepo
 ```
 
-Cookiecutter writes the generated repository into the selected `project_slug` directory. With `init_git` left as `true` (the default), the `post_gen_project.py` hook initializes it as a Git repository with an initial commit on the `repo_appsets_branch` branch.
-
-## Configure the Generated Repository
-
-After generation:
-
-1. Review `bootstrap.yaml` and confirm the Argo CD namespace (`argo_namespace`), repository URL (`repo_appsets`), and target branch (`repo_appsets_branch`).
-1. Update `bootstrap/appset-apps.yaml` with the applications, chart paths, target revisions, release names, environments, and cluster selectors for your platform.
-1. Update `bootstrap/appset-addons.yaml` with the add-ons, chart repositories, versions, and target clusters you want Argo CD to manage.
-1. Replace the sample values under `clusters/` with real per-cluster and per-environment Helm values.
-1. Commit and push the generated repository to the repository referenced by `repo_appsets`.
-1. Apply `bootstrap.yaml` to the Argo CD control-plane cluster.
-
-Example bootstrap command (substitute your `argo_namespace`):
+Run a specific child non-interactively with `--directory`:
 
 ```bash
-kubectl apply -n argocd -f bootstrap.yaml
+cookiecutter . --directory gitops
+cookiecutter . --directory charts
 ```
 
-## Repository Relationships
+Each child's `post_gen_project.py` initializes the output as its own Git repository
+with an initial commit (toggle with `init_git`) - matching the multirepo model where
+the AppSets repo and the charts repo are genuinely separate repositories.
 
-The generated GitOps repository expects two repository roles:
+## Children
 
-- ApplicationSet and values repository - generated from this template and referenced by `repo_appsets`. Holds the `ApplicationSet` resources and the per-cluster Helm values under `clusters/`.
-- Helm chart repository - referenced by `repo_charts` and used as the private chart source for the applications `ApplicationSet`.
+### `gitops/` - GitOps AppSets repo
 
-Add-on charts are not pulled from `repo_charts`; they come directly from each add-on's upstream public Helm repository.
+Generates the configuration repo: `bootstrap.yaml`, the `applications` and `addons`
+`ApplicationSet` resources under `bootstrap/`, and per-cluster Helm values under
+`clusters/<cluster>/{apps,addons}/`. Ships CI (a render gate plus promotion
+workflows) under `.github/`. The sample app is `podinfo`; the sample add-on is
+`metrics-server` (add-on charts come from upstream public Helm repos, not the charts
+repo). The generated repo carries its own `README.md` and `docs/`.
 
-The generated `ApplicationSet` resources use Argo CD multi-source applications so that chart templates can live in their respective chart sources while environment values live in the GitOps repository.
+Inputs (`gitops/cookiecutter.json`): `platform_name`, `argo_namespace`,
+`project_name`/`project_slug`, `repo_appsets`, `repo_charts`, `repo_appsets_branch`,
+`cluster_dev`/`cluster_stage`/`cluster_prod`, `github_username`, `init_git`.
 
-## Development Notes
+### `charts/` - Helm charts repo
 
-This repository is the template source. The nested `{{ cookiecutter.project_slug }}/README.md` file documents the generated repository, not this template repository.
+Generates the private chart repo: `charts/<app>/` (a vendored **podinfo** sample, with
+a strict `values.schema.json`), `ct.yaml` + `.github/workflows/lint-test.yml` running
+Helm [chart-testing](https://github.com/helm/chart-testing) (`ct lint` + `ct install`
+on kind) over changed charts, and `cr.yaml` + `.github/workflows/release.yml` enforcing
+the SemVer-as-values contract and using
+[chart-releaser](https://github.com/helm/chart-releaser) to publish each chart as a
+GitHub Release tagged `<app>-<version>`, then dispatching the AppSets repo on release.
+The release workflow reads the AppSets repo from the `APPSETS_REPO` Actions variable
+(see the generated repo's `README.md`).
 
-The generated repository also ships CI under `{{ cookiecutter.project_slug }}/.github/`: a render gate plus promotion workflows (documented in the generated `docs/promoting-chart-upgrades.md`). These workflow, composite-action, and script files are listed in `_copy_without_render` in `cookiecutter.json` so they are copied verbatim - GitHub Actions `${{ ... }}` expressions would otherwise collide with cookiecutter's Jinja `{{ ... }}` and break rendering. As a consequence those files must contain **no cookiecutter variables**; they self-discover apps, clusters, tags, and the charts repo by parsing `bootstrap/appset-apps.yaml` at runtime. (`.github/CODEOWNERS` is intentionally *not* copied verbatim, so it can render the prod cluster name.)
+Inputs (`charts/cookiecutter.json`): `platform_name`, `project_name`/`project_slug`,
+`repo_charts`, `repo_appsets`, `github_username`, `default_branch`, `init_git`.
 
-When changing the template:
+## Prerequisites
 
-- Keep `cookiecutter.json` in sync with variables referenced in hooks and rendered files.
-- Prefer adding sample clusters, add-ons, and applications as minimal examples that users can replace.
-- Render the template locally after editing and review the generated YAML before publishing changes.
-- Avoid committing generated output except for files that are part of the Cookiecutter template itself.
-- Do not put `{{ cookiecutter.* }}` variables in `.github/workflows/`, `.github/actions/`, or `.github/scripts/` - they are copied verbatim. Requires cookiecutter >= 2.x.
+- Python 3 and **Cookiecutter >= 2.5** (native nested-template selector)
+- Git
+- `helm` (to lint/render charts) and `kubectl` with access to the Argo CD
+  control-plane cluster (to apply the GitOps repo's `bootstrap.yaml`)
+- Access to the target GitHub repositories from Argo CD
+
+Both children validate `project_slug` in `pre_gen_project.py`: it must start with a
+letter or underscore and contain only letters, numbers, and underscores.
+
+## Development notes
+
+This repository is the template source. The detailed docs for each *generated* repo
+live inside that child's template tree (e.g.
+`gitops/{{ '{{' }} cookiecutter.project_slug {{ '}}' }}/README.md` and `docs/`).
+
+- Keep each child's `cookiecutter.json` in sync with the variables referenced in its
+  hooks and rendered files.
+- **`_copy_without_render`** matters in both children. In `gitops/` the GitHub
+  Actions files under `.github/{workflows,actions,scripts}/` are copied verbatim
+  because their `${{ '{{' }} ... {{ '}}' }}` expressions would collide with Jinja. In
+  `charts/` the entire vendored chart under `charts/*` (full of Helm `{{ '{{' }} ...
+  {{ '}}' }}` templating) and `.github/workflows/*` (including `lint-test.yml`) are
+  copied verbatim. Files outside those globs (READMEs, `CODEOWNERS`, `NOTICE`,
+  `cr.yaml`, and `ct.yaml` - whose `target-branch` renders from `default_branch`)
+  still render.
+- The `charts/` child vendors the upstream **podinfo** chart (Apache-2.0) as a sample;
+  see the generated `NOTICE`. Replace it with your own charts - only the
+  `charts/<app>/` layout and the `<app>-<version>` tag contract are load-bearing.
+- Render each child locally after editing and review the output before publishing.
 
 ## License
 
-Released under the MIT License. See [`LICENSE`](LICENSE).
+Released under the MIT License. See [`LICENSE`](LICENSE). Vendored sample charts retain
+their own licenses (see the generated `charts` repo's `NOTICE`).

@@ -1,0 +1,18 @@
+# chart-testing (ct) configuration - https://github.com/helm/chart-testing
+# Consumed by .github/workflows/lint-test.yml to lint and install-test the charts
+# that changed in a pull request (ct compares against target-branch).
+target-branch: {{ cookiecutter.default_branch }}
+chart-dirs:
+  - charts
+
+# Version policy is owned by release.yml's semver-guard, which enforces the
+# stronger MAJOR-vs-values contract (a renamed/removed values key must bump
+# MAJOR). So ct does not need to also require a version increment here.
+check-version-increment: false
+
+# This repo vendors upstream charts as starting points; don't require their
+# Chart.yaml maintainers to be members of your GitHub org.
+validate-maintainers: false
+
+# Give install-tests room on a cold kind cluster (image pulls).
+helm-extra-args: --timeout 600s

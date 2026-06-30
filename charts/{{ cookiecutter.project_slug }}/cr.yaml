@@ -1,0 +1,16 @@
+# chart-releaser (cr) configuration - https://github.com/helm/chart-releaser
+# Used by .github/workflows/release.yml to package each chart and publish it as a
+# GitHub Release. cr's default release-name-template is "{name}-{version}", which
+# produces the <app>-<version> git tag the GitOps AppSets repo pins (e.g.
+# podinfo-6.14.0) - so this stays consistent with how Argo CD selects charts.
+#
+# Argo CD consumes charts over git at that tag, so the workflow runs only cr's
+# package + upload (GitHub Releases + tags) and intentionally skips `cr index`
+# (the gh-pages Helm HTTP index), which nothing here consumes.
+
+# Don't recreate a release/tag that already exists (idempotent re-runs).
+skip-existing: true
+
+# Each chart is released on its own <app>-<version> cadence; don't mark every
+# chart release as the repository's single "latest" release.
+make-release-latest: false

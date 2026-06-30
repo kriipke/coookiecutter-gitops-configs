@@ -1,0 +1,8 @@
+# Require review on release-sensitive paths. Combine with branch protection
+# (require review from Code Owners) to make chart releases a true manual gate -
+# a merge to the default branch tags <app>-<version> and dispatches the AppSets repo.
+#
+# Replace @{{ cookiecutter.github_username }} with the team/users who own releases.
+
+/charts/      @{{ cookiecutter.github_username }}
+/.github/     @{{ cookiecutter.github_username }}

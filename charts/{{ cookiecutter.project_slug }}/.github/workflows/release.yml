@@ -1,0 +1,166 @@
+# .github/workflows/release.yml  (in the CHARTS repo)
+#
+# Enforces the SemVer-as-values contract, publishes each chart as a GitHub Release
+# tagged <app>-<version> via chart-releaser (cr, configured in cr.yaml), and
+# notifies the GitOps AppSets repo so it can open a promotion PR.
+#
+# The dispatch target is read from the `APPSETS_REPO` Actions *variable*
+# (Settings -> Secrets and variables -> Actions -> Variables), e.g.
+# `your-org/argocd-appsets-multirepo`. This keeps the workflow free of template
+# variables so it is copied verbatim by cookiecutter.
+#
+# Tokens:
+# - GITHUB_TOKEN (built-in) - used by cr to create same-repo Releases + tags.
+# - PROMOTE_DISPATCH_TOKEN (secret) - PAT or GitHub App token with `contents:write`
+#   on the AppSets repo, to fire the cross-repo dispatch (the default GITHUB_TOKEN
+#   cannot dispatch cross-repo).
+name: chart-release
+on:
+  pull_request:
+    paths: [charts/**]
+  push:
+    branches: [main]
+    paths: [charts/**]
+
+permissions:
+  contents: write
+
+jobs:
+  # A/B: lint + render every chart with its defaults so `main` is always valid
+  # (this is what keeps dev green).
+  lint-render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with: { version: v3.16.4 }
+      - name: Simple smoke test
+        run: test -d charts && echo "charts dir present"
+      - name: Lint and render
+        run: |
+          set -euo pipefail
+          for c in charts/*/; do
+            helm lint "$c"
+            helm template smoke "$c" >/dev/null
+          done
+
+  # C: enforce that the Chart.yaml version bump matches the values.yaml change.
+  semver-guard:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Install yq
+        run: |
+          sudo curl -fsSL -o /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+      - name: Check bump class vs values diff
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          for c in charts/*/; do
+            app=$(basename "$c")
+            cur=$(yq '.version' "$c/Chart.yaml")
+            prev=$(git show "$BASE_SHA:$c/Chart.yaml" 2>/dev/null | yq '.version' 2>/dev/null || echo "")
+            [ -n "$prev" ] && [ "$prev" != "null" ] || continue
+            # leaf keys of values.yaml, old vs new (clean default-vs-default diff)
+            new_keys=$(yq -o=props '.' "$c/values.yaml" | sed -E 's/ *=.*//' | sort -u)
+            old_keys=$(git show "$BASE_SHA:$c/values.yaml" | yq -o=props '.' - | sed -E 's/ *=.*//' | sort -u)
+            removed=$(comm -23 <(echo "$old_keys") <(echo "$new_keys"))
+            added=$(comm -13 <(echo "$old_keys") <(echo "$new_keys"))
+            curM=${cur%%.*}; prevM=${prev%%.*}
+            if [ -n "$removed" ] && [ "$curM" = "$prevM" ]; then
+              echo "::error::$app removed/renamed values keys but did not bump MAJOR ($prev -> $cur):"; echo "$removed"; exit 1
+            fi
+            if [ -n "$added" ] && [ "$cur" = "$prev" ]; then
+              echo "::error::$app added values keys but did not bump the version ($prev)"; exit 1
+            fi
+          done
+
+  # D/E: on merge to the default branch, package each chart with chart-releaser,
+  # publish a GitHub Release tagged <app>-<version>, and notify the AppSets repo.
+  release:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: azure/setup-helm@v4
+        with: { version: v3.16.4 }
+      - name: Install yq
+        run: |
+          sudo curl -fsSL -o /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      # Identify charts whose <app>-<version> tag does not yet exist. These are
+      # exactly the releases chart-releaser will cut on this run (it skips
+      # existing ones), and the ones to notify the AppSets repo about. The
+      # fetch-depth:0 checkout brings tags, so refs/tags reflects what's released.
+      - name: Detect new chart versions
+        id: detect
+        run: |
+          set -euo pipefail
+          : > new-releases.txt
+          for c in charts/*/; do
+            app=$(basename "$c")
+            ver=$(yq '.version' "$c/Chart.yaml")
+            tag="${app}-${ver}"
+            if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+              echo "already released: ${tag}"
+            else
+              echo "new: ${tag}"
+              printf '%s %s\n' "$app" "$ver" >> new-releases.txt
+            fi
+          done
+          if [ -s new-releases.txt ]; then echo "any=true" >> "$GITHUB_OUTPUT"; fi
+
+      # Install the cr CLI only (install_only) so we run package + upload
+      # ourselves and skip `cr index` - the gh-pages Helm HTTP index that nothing
+      # here consumes (Argo CD reads charts over git at the tag).
+      - name: Set up chart-releaser
+        if: steps.detect.outputs.any == 'true'
+        uses: helm/chart-releaser-action@v1
+        with:
+          install_only: true
+
+      - name: Package and publish releases
+        if: steps.detect.outputs.any == 'true'
+        env:
+          CR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          rm -rf .cr-release-packages && mkdir -p .cr-release-packages
+          for c in charts/*/; do
+            cr package "$c" --config cr.yaml --package-path .cr-release-packages
+          done
+          # Creates a GitHub Release + git tag <app>-<version> per chart
+          # (skip-existing in cr.yaml makes this idempotent).
+          cr upload \
+            --config cr.yaml \
+            --owner "${{ github.repository_owner }}" \
+            --git-repo "${{ github.event.repository.name }}" \
+            --package-path .cr-release-packages \
+            --token "$CR_TOKEN"
+
+      - name: Notify the AppSets repo
+        if: steps.detect.outputs.any == 'true'
+        env:
+          DISPATCH_TOKEN: ${{ secrets.PROMOTE_DISPATCH_TOKEN }}
+          APPSETS_REPO: ${{ vars.APPSETS_REPO }}
+        run: |
+          set -euo pipefail
+          if [ -z "${APPSETS_REPO:-}" ]; then
+            echo "::error::Set the APPSETS_REPO Actions variable (owner/name of the GitOps AppSets repo) before releasing."
+            exit 1
+          fi
+          while read -r app ver; do
+            [ -n "$app" ] || continue
+            echo "dispatching chart-released for ${app} ${ver}"
+            curl -fsSL -X POST \
+              -H "Authorization: Bearer $DISPATCH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${APPSETS_REPO}/dispatches" \
+              -d "{\"event_type\":\"chart-released\",\"client_payload\":{\"app\":\"$app\",\"version\":\"$ver\"}}"
+          done < new-releases.txt

@@ -1,0 +1,17 @@
+{{ cookiecutter.project_name }}
+Copyright {{ cookiecutter.github_username }}
+
+This repository vendors third-party Helm charts as starting points. They remain
+under their original licenses; replace them with your own charts as needed.
+
+----------------------------------------------------------------------
+charts/podinfo/
+----------------------------------------------------------------------
+Vendored from podinfo (https://github.com/stefanprodan/podinfo).
+Copyright (c) Stefan Prodan.
+Licensed under the Apache License, Version 2.0. The full license text is
+retained at charts/podinfo/LICENSE.
+
+The chart's `version:` may be re-stamped to follow this platform's
+SemVer-as-values release contract; `appVersion` tracks the upstream podinfo
+application release.

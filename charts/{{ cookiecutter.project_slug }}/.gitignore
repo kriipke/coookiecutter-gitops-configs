@@ -1,0 +1,7 @@
+# Packaged charts and resolved dependencies
+*.tgz
+charts/**/charts/
+charts/**/Chart.lock
+
+# Local helm/test scratch
+.DS_Store

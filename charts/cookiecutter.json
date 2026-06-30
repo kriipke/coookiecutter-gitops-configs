@@ -1,0 +1,23 @@
+{
+  "platform_name": "MyPlatform",
+  "project_name": "GitOps Charts: Apps",
+  "project_slug": "{{ cookiecutter.project_name.lower().replace(':', '').replace(' ', '_') }}",
+  "repo_charts": "kriipke/argocd-charts-multirepo",
+  "repo_appsets": "kriipke/argocd-appsets-multirepo",
+  "github_username": "your-org-or-username",
+  "default_branch": "main",
+  "init_git": true,
+  "_copy_without_render": [
+    "charts/*",
+    ".github/workflows/*"
+  ],
+  "__prompts__": {
+    "platform_name": "Human-readable platform name (match the GitOps repo)",
+    "project_name": "Display name for the generated charts repository",
+    "repo_charts": "GitHub repo (owner/name) this charts repo lives in - must match repo_charts in the GitOps repo",
+    "repo_appsets": "GitHub repo (owner/name) of the GitOps AppSets repo this charts repo notifies on release",
+    "github_username": "GitHub org or user that owns release-sensitive paths (rendered into CODEOWNERS)",
+    "default_branch": "Default branch Argo CD's dev environment tracks and chart releases tag from",
+    "init_git": "Initialize a git repository with an initial commit after generation"
+  }
+}
