@@ -1,0 +1,107 @@
+name: render-app
+description: >-
+  Clone an application's Helm chart at a pinned revision, render it with a
+  cluster's values file (reproducing what Argo CD's repo-server does), and
+  validate the output with kubeconform (core resources strict; CRDs validated
+  when a schema exists, skipped otherwise - never falsely failed).
+
+inputs:
+  chart-repo:
+    description: Chart git repo URL, e.g. ssh://git@github.com/org/charts
+    required: true
+  chart-path:
+    description: Path to the chart within the repo, e.g. charts/podinfo
+    required: true
+  target-revision:
+    description: Git ref/tag/branch of the chart to render
+    required: true
+  values-file:
+    description: Path to the cluster values file in this repo
+    required: true
+  release-name:
+    description: Helm release name
+    required: true
+  namespace:
+    description: Destination namespace
+    required: true
+  deploy-key:
+    description: Read-only SSH deploy key for the charts repo (leave empty for public charts)
+    required: false
+    default: ""
+  helm-version:
+    description: Helm version to use (pin to v3 for Argo CD repo-server parity)
+    required: false
+    default: v3.16.4
+  crd-catalog:
+    description: kubeconform schema-location template for CRDs
+    required: false
+    default: "https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{ .Group }}/{{ .ResourceKind }}_{{ .ResourceAPIVersion }}.json"
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Helm
+      uses: azure/setup-helm@v4
+      with:
+        version: ${{ inputs.helm-version }}
+
+    - name: Install yq and kubeconform
+      shell: bash
+      run: |
+        set -euo pipefail
+        if ! command -v yq >/dev/null; then
+          sudo curl -fsSL -o /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+        fi
+        if ! command -v kubeconform >/dev/null; then
+          curl -fsSL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz \
+            | sudo tar -xz -C /usr/local/bin kubeconform
+        fi
+
+    - name: Load charts deploy key
+      if: inputs.deploy-key != ''
+      uses: webfactory/ssh-agent@v0.9.0
+      with:
+        ssh-private-key: ${{ inputs.deploy-key }}
+
+    - name: Clone chart at pinned revision
+      shell: bash
+      env:
+        CHART_REPO: ${{ inputs.chart-repo }}
+        TARGET_REVISION: ${{ inputs.target-revision }}
+      run: |
+        set -euo pipefail
+        mkdir -p ~/.ssh
+        ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null || true
+        rm -rf .charts-src
+        git clone --depth 1 --branch "$TARGET_REVISION" "$CHART_REPO" .charts-src
+
+    - name: Render and validate
+      shell: bash
+      env:
+        CHART_PATH: ${{ inputs.chart-path }}
+        VALUES_FILE: ${{ inputs.values-file }}
+        RELEASE_NAME: ${{ inputs.release-name }}
+        NAMESPACE: ${{ inputs.namespace }}
+        CRD_CATALOG: ${{ inputs.crd-catalog }}
+      run: |
+        set -euo pipefail
+        chart_dir=".charts-src/${CHART_PATH}"
+        [ -d "$chart_dir" ] || { echo "::error::chart path '$chart_dir' not found in $CHART_REPO@$TARGET_REVISION"; exit 1; }
+        [ -f "$VALUES_FILE" ] || { echo "::error::values file '$VALUES_FILE' not found"; exit 1; }
+
+        # Build subchart deps only if the chart declares any.
+        if [ "$(yq '.dependencies // [] | length' "$chart_dir/Chart.yaml")" -gt 0 ]; then
+          helm dependency build "$chart_dir" || helm dependency update "$chart_dir"
+        fi
+
+        echo "Rendering '$RELEASE_NAME' from '$chart_dir' with '$VALUES_FILE' (ns: $NAMESPACE)"
+        helm template "$RELEASE_NAME" "$chart_dir" \
+          --namespace "$NAMESPACE" \
+          --values "$VALUES_FILE" > rendered.yaml
+
+        echo "Validating rendered manifests with kubeconform"
+        kubeconform -strict -summary -ignore-missing-schemas \
+          -schema-location default \
+          -schema-location "$CRD_CATALOG" \
+          rendered.yaml

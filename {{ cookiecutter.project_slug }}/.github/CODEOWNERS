@@ -1,0 +1,8 @@
+# Require review on promotion-sensitive paths. Combine with branch protection
+# (require review from Code Owners) to make prod promotion a true manual gate.
+#
+# Replace @{{ cookiecutter.github_username }} with the team/users who own releases.
+
+/bootstrap/                                   @{{ cookiecutter.github_username }}
+/clusters/{{ cookiecutter.cluster_prod }}/    @{{ cookiecutter.github_username }}
+/.github/                                     @{{ cookiecutter.github_username }}

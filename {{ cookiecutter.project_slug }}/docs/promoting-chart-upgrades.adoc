@@ -1,0 +1,289 @@
+= Promoting Chart Upgrades Safely (incl. breaking values changes)
+
+Upgrading a chart is easy until the chart's `values.yaml` *structure* changes. If
+a key is renamed, moved, nested, or removed, bumping `targetRevision` alone is
+dangerous: Helm **silently ignores** values it no longer recognises, so a
+carefully tuned profile (HPA, PDB, securityContext, ServiceMonitor) can quietly
+go unset with no error. This page describes how this repository's CI catches that
+*loudly*, and the workflow for promoting upgrades - especially breaking ones -
+from dev to prod.
+
+Read link:how-it-works.adoc[How It Works] and
+link:developing-and-promoting-apps.adoc[Developing & Promoting Apps] first.
+
+== Two guards, working together
+
+. *A SemVer contract on the chart version* tells humans (and CI) whether a values
+  migration is required.
+. *A CI render gate* reproduces what Argo CD does (`helm template` per
+  app x cluster) so a values/chart mismatch fails at PR time, not at sync.
+
+Neither alone is enough: a render can succeed while silently dropping a renamed
+key, and a version number can't validate YAML. Together they make breaking
+changes safe to promote.
+
+== The SemVer contract
+
+The git tag `<app>-<version>` carries the **chart's own version** (`Chart.yaml`
+`version:`), following this contract. `appVersion` tracks the upstream application
+independently.
+
+[cols="1,3,2",options="header"]
+|===
+| Bump | Meaning | Consumer action
+
+| *MAJOR* (`X.0.0`)
+| Breaking values change - an existing key is renamed, moved, nested, retyped, or
+  removed.
+| **Must** migrate the per-cluster values files.
+
+| *MINOR* (`x.Y.0`)
+| Backward-compatible - a new optional key/block was added.
+| None required; adopt the new option when ready.
+
+| *PATCH* (`x.y.Z`)
+| No values impact (template/bugfix, `appVersion` bump).
+| None.
+|===
+
+Optional but recommended: ship a `values.schema.json` (with
+`additionalProperties: false`) in the chart. Helm then validates values during
+`helm template`, turning any stale/renamed key into a precise, loud failure for
+free inside the render gate.
+
+== CI gates in this repository
+
+These run automatically; the workflows live under `.github/` and self-discover
+apps, clusters, tags, and the charts repo by parsing `bootstrap/appset-apps.yaml`.
+
+* *Render gate* (`.github/workflows/render-gate.yml`) - for every (app x cluster)
+  it clones `{{ cookiecutter.repo_charts }}` at the pinned `targetRevision`, runs
+  `helm template` with that cluster's values file, and validates the output with
+  `kubeconform` (core resources strict; CRDs validated when a schema exists,
+  skipped otherwise). dev tracks the charts `main` branch (a moving target) so its
+  render is *advisory*; tag-pinned `{{ cookiecutter.cluster_stage }}` and
+  `{{ cookiecutter.cluster_prod }}` are *blocking*.
+* *Atomic-migration check* - a PR that bumps a pinned tag by a MAJOR version must
+  also modify that app's values file for the affected cluster in the same PR, or
+  the gate fails (and the PR is labelled `breaking: values migration required`).
+  This guarantees Argo CD never renders a new chart against stale values.
+* *Stage/prod lockstep* - `{{ cookiecutter.cluster_stage }}` and
+  `{{ cookiecutter.cluster_prod }}` values must match (except an allowlist,
+  default `ui.message`) so stage truly soaks what prod runs.
+* *Advisory stale-key check* - flags keys set in a values file that the chart's
+  `values.yaml` no longer defines. It is best-effort (it can't see keys nested
+  under free-form maps/lists) and emits warnings only by default.
+
+Toggle behaviour with repository variables (Settings -> Secrets and variables ->
+Actions -> Variables):
+
+[cols="1,2",options="header"]
+|===
+| Variable | Effect (default)
+
+| `AUTO_MERGE_STAGE`
+| `true` lets non-breaking stage PRs auto-merge once checks pass (default: off).
+
+| `STAGE_PROD_LOCKSTEP_BLOCKING`
+| `true` fails the build on stage/prod drift (default: warn only).
+
+| `STALE_KEYS_BLOCKING`
+| `true` fails the build on advisory stale-key findings (default: warn only).
+
+| `LOCKSTEP_ALLOWLIST`
+| Comma-separated keys allowed to differ between stage and prod (default `ui.message`).
+|===
+
+== Promotion flows
+
+* *dev* tracks the charts `main` branch and updates automatically via Argo CD; the
+  charts-repo CI keeps `main` green.
+* *stage* (automatic): a chart release dispatches `promote.yml`, which bumps the
+  stage `targetRevision` and opens a PR. The render gate runs on it. Non-breaking
+  bumps can auto-merge (`AUTO_MERGE_STAGE`); MAJOR bumps open a flagged PR that
+  fails until values are migrated.
+* *prod* (manual): run the `promote-prod` workflow (`workflow_dispatch`). It
+  enforces a *soak guard* (the tag must be one stage currently/previously ran),
+  bumps prod, and opens a PR that is **never auto-merged**. Back this with branch
+  protection + CODEOWNERS (see `.github/CODEOWNERS`).
+
+== Breaking-change migration runbook
+
+When a chart cuts a MAJOR release (breaking values change):
+
+. *Chart author* bumps `Chart.yaml` to the next MAJOR, writes a migration note,
+  and (recommended) updates `values.schema.json`. The charts-repo CI enforces
+  that the bump class matches the values diff, tags `<app>-<version>`, and
+  dispatches this repo.
+. *Stage PR* is opened automatically and labelled
+  `breaking: values migration required`. Its render gate **fails** until you
+  migrate `clusters/{{ cookiecutter.cluster_stage }}/apps/<app>.yaml` to the new
+  structure *in that PR*. Push the migration; when the gate is green, merge and
+  let it soak.
+. *Prod promotion*: run `promote-prod`. Migrate
+  `clusters/{{ cookiecutter.cluster_prod }}/apps/<app>.yaml` identically (the
+  lockstep check enforces parity), get a review, and merge by hand.
+
+== Charts-repo CI (copy into `{{ cookiecutter.repo_charts }}`)
+
+This template generates only the appsets repo. Add the following workflow to the
+charts repo so it enforces the SemVer contract, tags releases, and notifies this
+repo. It needs a `PROMOTE_DISPATCH_TOKEN` secret (a PAT or GitHub App token with
+`contents:write` on this appsets repo - `GITHUB_TOKEN` cannot dispatch
+cross-repo). Replace `OWNER/APPSETS_REPO` with this repository
+(`{{ cookiecutter.repo_appsets }}`).
+
+{% raw %}
+[source,yaml]
+----
+# .github/workflows/release.yml  (in the CHARTS repo)
+name: chart-release
+on:
+  pull_request:
+    paths: [charts/**]
+  push:
+    branches: [main]
+    paths: [charts/**]
+
+permissions:
+  contents: write
+
+jobs:
+  # A/B: lint + render every chart with its defaults so `main` is always valid
+  # (this is what keeps dev green).
+  lint-render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with: { version: v3.16.4 }
+      - name: Simple smoke test
+        run: test -d charts && echo "charts dir present"
+      - name: Lint and render
+        run: |
+          set -euo pipefail
+          for c in charts/*/; do
+            helm lint "$c"
+            helm template smoke "$c" >/dev/null
+          done
+
+  # C: enforce that the Chart.yaml version bump matches the values.yaml change.
+  semver-guard:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Install yq
+        run: |
+          sudo curl -fsSL -o /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+      - name: Check bump class vs values diff
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          for c in charts/*/; do
+            app=$(basename "$c")
+            cur=$(yq '.version' "$c/Chart.yaml")
+            prev=$(git show "$BASE_SHA:$c/Chart.yaml" 2>/dev/null | yq '.version' 2>/dev/null || echo "")
+            [ -n "$prev" ] && [ "$prev" != "null" ] || continue
+            # leaf keys of values.yaml, old vs new (clean default-vs-default diff)
+            new_keys=$(yq -o=props '.' "$c/values.yaml" | sed -E 's/ *=.*//' | sort -u)
+            old_keys=$(git show "$BASE_SHA:$c/values.yaml" | yq -o=props '.' - | sed -E 's/ *=.*//' | sort -u)
+            removed=$(comm -23 <(echo "$old_keys") <(echo "$new_keys"))
+            added=$(comm -13 <(echo "$old_keys") <(echo "$new_keys"))
+            curM=${cur%%.*}; prevM=${prev%%.*}
+            if [ -n "$removed" ] && [ "$curM" = "$prevM" ]; then
+              echo "::error::$app removed/renamed values keys but did not bump MAJOR ($prev -> $cur):"; echo "$removed"; exit 1
+            fi
+            if [ -n "$added" ] && [ "$cur" = "$prev" ]; then
+              echo "::error::$app added values keys but did not bump the version ($prev)"; exit 1
+            fi
+          done
+
+  # D/E: on merge to main, tag <app>-<version> and notify the appsets repo.
+  release:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: azure/setup-helm@v4
+        with: { version: v3.16.4 }
+      - name: Install yq
+        run: |
+          sudo curl -fsSL -o /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+      - name: Tag and dispatch
+        env:
+          DISPATCH_TOKEN: ${{ secrets.PROMOTE_DISPATCH_TOKEN }}
+        run: |
+          set -euo pipefail
+          for c in charts/*/; do
+            app=$(basename "$c")
+            ver=$(yq '.version' "$c/Chart.yaml")
+            tag="${app}-${ver}"
+            if git rev-parse "$tag" >/dev/null 2>&1; then continue; fi
+            git tag "$tag" && git push origin "$tag"
+            curl -fsSL -X POST \
+              -H "Authorization: Bearer $DISPATCH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              https://api.github.com/repos/OWNER/APPSETS_REPO/dispatches \
+              -d "{\"event_type\":\"chart-released\",\"client_payload\":{\"app\":\"$app\",\"version\":\"$ver\"}}"
+          done
+----
+{% endraw %}
+
+== Required secrets and settings
+
+[cols="1,1,2",options="header"]
+|===
+| Where | Name | Purpose
+
+| this (appsets) repo
+| `CHARTS_DEPLOY_KEY`
+| Read-only SSH deploy key on `{{ cookiecutter.repo_charts }}` so the render gate
+  can clone charts at a tag.
+
+| charts repo
+| `PROMOTE_DISPATCH_TOKEN`
+| PAT / GitHub App token with `contents:write` on `{{ cookiecutter.repo_appsets }}`
+  to fire the `repository_dispatch` (the default `GITHUB_TOKEN` cannot).
+
+| this repo (setting)
+| -
+| Enable *Allow GitHub Actions to create and approve pull requests* so the
+  promotion workflows can open PRs.
+
+| this repo (setting)
+| -
+| Branch protection on `{{ cookiecutter.repo_appsets_branch }}`: require the
+  render gate status check and Code Owners review (see `.github/CODEOWNERS`).
+|===
+
+NOTE: External (fork) PRs cannot access `CHARTS_DEPLOY_KEY`, so the render gate
+can't clone private charts for them; a maintainer must run the gate. Pre-create
+the labels `promotion: stage`, `promotion: prod`, and
+`breaking: values migration required` if your org disables auto-creation.
+
+== Rollback
+
+Every environment's state is a git commit, so rollback is a revert:
+
+* *Chart version* - revert the `targetRevision` change. For a MAJOR rollback,
+  revert the values migration in the same commit (it is atomic in both
+  directions).
+* *dev* - revert the offending commit on the charts repo's `main`.
+
+Auto-sync and self-heal converge the cluster to whatever Git says, so recovery is
+always "make Git correct again".
+
+== Optional, higher-fidelity upgrades
+
+* *`argocd app diff --revision <tag>`* - if CI can reach the Argo CD API, this
+  shows the real server-rendered diff (including live state and value merge
+  order), stronger than `helm template`. Needs Argo CD credentials in CI.
+* *Renovate* - can open the `targetRevision`-bump PRs for you (it understands
+  `<app>-<semver>` tags), replacing the `repository_dispatch` machinery while the
+  same render gate and atomic-migration check still apply on the PR.

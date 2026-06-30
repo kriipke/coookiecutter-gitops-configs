@@ -116,6 +116,13 @@ values *identical* so stage soaks the real prod config; the
 This is the core release flow. dev already runs `main`, so promotion is about
 moving stage and prod onto a released tag.
 
+NOTE: This is CI-assisted. A chart release auto-opens the stage PR, and a manual
+workflow opens the prod PR; a render gate validates every change before it
+merges. The steps below are the manual equivalent. Crucially, when an upgrade
+changes the chart's values *structure* (a MAJOR version), you must migrate the
+values file in the *same* PR or the gate blocks it - see
+link:promoting-chart-upgrades.adoc[Promoting Chart Upgrades Safely].
+
 . *Cut a release tag* in `{{ cookiecutter.repo_charts }}` from a known-good
   commit (the one validated on dev), for example `podinfo-6.15.0`.
 . *Promote to stage* - in `bootstrap/appset-apps.yaml`, bump the stage element's
@@ -170,7 +177,8 @@ diff clusters/{{ cookiecutter.cluster_stage }}/apps/<appName>.yaml \
 ----
 
 The only expected differences are environment identity (for example the
-`ui.message`), not sizing, autoscaling, or hardening.
+`ui.message`), not sizing, autoscaling, or hardening. CI runs this same check
+(the stage/prod lockstep job) on every PR, so drift is caught automatically.
 
 `{{ cookiecutter.cluster_dev }}` is the exception: it is a lightweight iteration
 profile and is tuned independently, so you can change it freely without touching

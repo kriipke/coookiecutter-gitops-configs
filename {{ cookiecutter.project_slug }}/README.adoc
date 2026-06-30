@@ -19,6 +19,49 @@ In-depth docs live under `docs/`:
   the two `ApplicationSet` resources, and multi-source applications.
 * link:docs/developing-and-promoting-apps.adoc[Developing & Promoting Apps] - the
   workflow for developing apps and promoting them from dev to prod.
+* link:docs/promoting-chart-upgrades.adoc[Promoting Chart Upgrades Safely] - the
+  CI render gate, the SemVer contract, and how to handle chart upgrades that
+  change the values structure.
+
+== CI/CD Setup (one-time)
+
+The CI under `.github/` (a render gate plus dev -> stage -> prod promotion) needs
+two one-time setup steps before it works. Full details, including the workflow
+snippet, are in link:docs/promoting-chart-upgrades.adoc[Promoting Chart Upgrades Safely].
+
+. *Add secrets and settings.*
++
+[cols="1,1,2",options="header"]
+|===
+| Where | What | Purpose
+
+| this repo (`{{ cookiecutter.repo_appsets }}`)
+| secret `CHARTS_DEPLOY_KEY`
+| Read-only SSH deploy key on `{{ cookiecutter.repo_charts }}` so CI can clone a
+  chart at its pinned tag to render it.
+
+| charts repo (`{{ cookiecutter.repo_charts }}`)
+| secret `PROMOTE_DISPATCH_TOKEN`
+| PAT / GitHub App token with `contents:write` on `{{ cookiecutter.repo_appsets }}`
+  so a chart release can trigger stage promotion (the default `GITHUB_TOKEN`
+  cannot dispatch across repos).
+
+| this repo (setting)
+| _Allow GitHub Actions to create and approve pull requests_
+| Lets the promotion workflows open PRs (Settings -> Actions -> General).
+
+| this repo (setting)
+| Branch protection on `{{ cookiecutter.repo_appsets_branch }}`
+| Require the `render-gate` status check and Code Owners review (see
+  `.github/CODEOWNERS`) so prod promotion is a true manual gate.
+|===
+
+. *Copy the charts-repo workflow.* Add the `release.yml` snippet from
+  link:docs/promoting-chart-upgrades.adoc[Promoting Chart Upgrades Safely] to
+  `{{ cookiecutter.repo_charts }}` at `.github/workflows/release.yml`, replacing
+  the `OWNER/APPSETS_REPO` placeholder with `{{ cookiecutter.repo_appsets }}`. It
+  enforces the SemVer contract, tags releases as `<app>-<version>`, and notifies
+  this repo to promote.
 
 == Repository Layout
 
@@ -39,6 +82,7 @@ clusters/
     apps/
     addons/
 docs/                       <6>
+.github/                    <7>
 ----
 <1> Root Argo CD `Application` that points Argo CD at the `bootstrap/` directory.
 <2> `ApplicationSet` that deploys platform workload applications.
@@ -46,6 +90,7 @@ docs/                       <6>
 <4> Per-cluster Helm values for applications.
 <5> Per-cluster Helm values for add-ons.
 <6> Documentation: how the repo works and how to develop and promote apps.
+<7> CI: render-gate and promotion workflows (see `docs/promoting-chart-upgrades.adoc`).
 
 == How It Works
 

@@ -1,0 +1,108 @@
+name: render-gate
+
+# Reproduces what Argo CD's repo-server does - helm template every (app x cluster)
+# against its pinned chart - so a chart/values mismatch fails at PR time instead
+# of silently at sync. The matrix is self-discovered from bootstrap/appset-apps.yaml.
+
+on:
+  pull_request:
+    paths:
+      - bootstrap/appset-apps.yaml
+      - clusters/**
+      - .github/**
+  workflow_dispatch: {}
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref to check out (defaults to the triggering ref)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.gen.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      - name: Install yq
+        run: |
+          sudo curl -fsSL -o /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+      - name: Build matrix from appset
+        id: gen
+        run: echo "matrix=$(bash .github/scripts/appset-matrix.sh bootstrap/appset-apps.yaml)" >> "$GITHUB_OUTPUT"
+
+  render:
+    needs: matrix
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        entry: ${{ fromJSON(needs.matrix.outputs.matrix) }}
+    name: render (${{ matrix.entry.releaseName }} @ ${{ matrix.entry.targetRevision }})
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      # dev tracks the charts 'main' branch (a moving target), so its render is
+      # advisory; tag-pinned stage/prod are blocking.
+      - name: Render & validate
+        id: render
+        continue-on-error: ${{ !matrix.entry.pinned }}
+        uses: ./.github/actions/render-app
+        with:
+          chart-repo: ${{ matrix.entry.chartRepo }}
+          chart-path: ${{ matrix.entry.chartPath }}
+          target-revision: ${{ matrix.entry.targetRevision }}
+          values-file: ${{ matrix.entry.valuesFile }}
+          release-name: ${{ matrix.entry.releaseName }}
+          namespace: ${{ matrix.entry.namespace }}
+          deploy-key: ${{ secrets.CHARTS_DEPLOY_KEY }}
+      - name: Advisory stale-key check
+        if: ${{ always() && steps.render.outcome != 'skipped' }}
+        env:
+          STALE_KEYS_BLOCKING: ${{ vars.STALE_KEYS_BLOCKING || 'false' }}
+        run: |
+          chart_values=".charts-src/${{ matrix.entry.chartPath }}/values.yaml"
+          if [ -f "$chart_values" ]; then
+            bash .github/scripts/values-leaf-diff.sh "${{ matrix.entry.valuesFile }}" "$chart_values"
+          fi
+
+  lockstep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install yq
+        run: |
+          sudo curl -fsSL -o /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+      - name: Stage/prod values lockstep
+        env:
+          STAGE_PROD_LOCKSTEP_BLOCKING: ${{ vars.STAGE_PROD_LOCKSTEP_BLOCKING || 'false' }}
+          LOCKSTEP_ALLOWLIST: ${{ vars.LOCKSTEP_ALLOWLIST || 'ui.message' }}
+        run: bash .github/scripts/stage-prod-lockstep.sh bootstrap/appset-apps.yaml
+
+  atomic-migration:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install yq
+        run: |
+          sudo curl -fsSL -o /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+      - name: Enforce values migration on MAJOR bumps
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/semver-label.sh

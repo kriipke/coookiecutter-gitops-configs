@@ -1,0 +1,93 @@
+name: promote-prod
+
+# Manual prod promotion. Never automatic. Enforces the stage soak (the tag must
+# be one stage currently/previously ran) and opens a PR that must be reviewed and
+# merged by hand (back this with branch protection + CODEOWNERS on bootstrap/ and
+# clusters/<prod>/). The render-gate workflow runs on the PR; for a MAJOR bump it
+# fails until the prod values are migrated in the same PR.
+
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: App name (e.g. podinfo)
+        required: true
+      version:
+        description: Chart version, semver without app prefix (e.g. 6.15.0)
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  promote-prod:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install yq
+        run: |
+          sudo curl -fsSL -o /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Resolve app/version
+        id: in
+        env:
+          APP: ${{ inputs.app }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          echo "app=$APP" >> "$GITHUB_OUTPUT"
+          echo "tag=${APP}-${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Soak guard (tag must have run on stage)
+        run: bash .github/scripts/soak-guard.sh "${{ steps.in.outputs.app }}" "${{ steps.in.outputs.tag }}" bootstrap/appset-apps.yaml
+
+      - name: Bump prod targetRevision
+        id: bump
+        env:
+          APP: ${{ steps.in.outputs.app }}
+          TAG: ${{ steps.in.outputs.tag }}
+        run: |
+          set -euo pipefail
+          old=$(yq ".spec.generators[0].list.elements[] | select(.appName==\"$APP\" and .environment==\"prod\") | .targetRevision" bootstrap/appset-apps.yaml | head -1)
+          [ -n "$old" ] && [ "$old" != "null" ] || { echo "::error::no prod element for app '$APP'"; exit 1; }
+          if [ "$old" = "$TAG" ]; then echo "::notice::prod already at $TAG; nothing to do"; echo "noop=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+
+          old_major=$(printf '%s' "${old#"$APP"-}" | cut -d. -f1)
+          new_major=$(printf '%s' "${TAG#"$APP"-}" | cut -d. -f1)
+          class=minor-or-patch
+          if printf '%s' "$old" | grep -Eq "^${APP}-[0-9]+\." && [ "$new_major" != "$old_major" ]; then class=major; fi
+
+          yq -i "(.spec.generators[0].list.elements[] | select(.appName==\"$APP\" and .environment==\"prod\") | .targetRevision) = \"$TAG\"" bootstrap/appset-apps.yaml
+
+          echo "old=$old" >> "$GITHUB_OUTPUT"
+          echo "class=$class" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "**Production** promotion of \`$APP\`: \`$old\` -> \`$TAG\` (passed the stage soak guard)."
+            echo ""
+            echo "Bump class: **$class**."
+            echo ""
+            if [ "$class" = "major" ]; then
+              echo "> [!WARNING]"
+              echo "> MAJOR bump = breaking values change. Migrate"
+              echo "> \`clusters/<prod>/apps/$APP.yaml\` to match the migrated stage values in"
+              echo "> this PR; the render gate and stage/prod lockstep check will fail otherwise."
+            fi
+            echo ""
+            echo "Merge is manual - review carefully before deploying to prod."
+          } > pr-body.md
+
+      - name: Open prod promotion PR (manual merge)
+        if: steps.bump.outputs.noop != 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: promote/${{ steps.in.outputs.app }}-prod-${{ steps.in.outputs.tag }}
+          title: "promote(prod): ${{ steps.in.outputs.app }} ${{ steps.bump.outputs.old }} -> ${{ steps.in.outputs.tag }}"
+          commit-message: "promote(prod): ${{ steps.in.outputs.app }} -> ${{ steps.in.outputs.tag }}"
+          body-path: pr-body.md
+          labels: "${{ steps.bump.outputs.class == 'major' && 'promotion: prod,breaking: values migration required' || 'promotion: prod' }}"

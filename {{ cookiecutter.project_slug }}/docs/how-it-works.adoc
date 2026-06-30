@@ -167,6 +167,16 @@ shipping a values file.
 * `preserveResourcesOnDeletion: true` on the `ApplicationSet` means deleting the
   set does not cascade-delete the workloads it manages.
 
+== Validation & CI gates
+
+Argo CD renders charts on its repo-server: it merges each cluster's values file
+with the chart pulled from its source. Before that ever happens, GitHub Actions
+workflows under `.github/` reproduce the same render (`helm template` per
+app x cluster against the pinned chart) so a values/chart mismatch fails on the
+pull request instead of silently at sync. The same workflows automate
+dev -> stage -> prod promotion and enforce a SemVer contract for breaking values
+changes. See link:promoting-chart-upgrades.adoc[Promoting Chart Upgrades Safely].
+
 == Where to go next
 
 To actually change what runs - edit values, add an app, or move a release from

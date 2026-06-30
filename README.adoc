@@ -152,12 +152,15 @@ This repository is the template source. The nested `{{ cookiecutter.project_slug
 
 The repository also carries auxiliary tooling that is not part of the rendered output, including a GitHub Actions PR labeler workflow under `.github/workflows/` and work-in-progress helper files (`Makefile`, `vendir.yml`).
 
+The generated repository also ships CI under `{{ cookiecutter.project_slug }}/.github/`: a render gate plus promotion workflows (documented in the generated `docs/promoting-chart-upgrades.adoc`). These workflow, composite-action, and script files are listed in `_copy_without_render` in `cookiecutter.json` so they are copied verbatim - GitHub Actions `${{ ... }}` expressions would otherwise collide with cookiecutter's Jinja `{{ ... }}` and break rendering. As a consequence those files must contain **no cookiecutter variables**; they self-discover apps, clusters, tags, and the charts repo by parsing `bootstrap/appset-apps.yaml` at runtime. (`.github/CODEOWNERS` is intentionally *not* copied verbatim, so it can render the prod cluster name.)
+
 When changing the template:
 
 * Keep `cookiecutter.json` in sync with variables referenced in hooks and rendered files.
 * Prefer adding sample clusters, add-ons, and applications as minimal examples that users can replace.
 * Render the template locally after editing and review the generated YAML before publishing changes.
 * Avoid committing generated output except for files that are part of the Cookiecutter template itself.
+* Do not put `{{ cookiecutter.* }}` variables in `.github/workflows/`, `.github/actions/`, or `.github/scripts/` - they are copied verbatim. Requires cookiecutter >= 2.x.
 
 == License
 

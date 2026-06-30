@@ -13,6 +13,9 @@ workloads, and how you develop applications and promote them from dev to prod.
   day-to-day workflow: changing an app on dev, adding a brand-new application,
   and promoting both chart versions and configuration from dev -> stage -> prod
   (plus rollback).
+* link:promoting-chart-upgrades.adoc[Promoting Chart Upgrades Safely] - the SemVer
+  contract, the CI render gate, and the runbook for upgrades that change the
+  chart's values structure (breaking changes) - including the charts-repo CI.
 
 == TL;DR
 

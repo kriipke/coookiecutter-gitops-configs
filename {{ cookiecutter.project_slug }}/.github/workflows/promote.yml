@@ -1,0 +1,101 @@
+name: promote-stage
+
+# Automated stage promotion. Triggered by a chart release in the charts repo
+# (repository_dispatch) or manually. Bumps the stage targetRevision and opens a
+# PR; the render-gate workflow runs on that PR as the gate. A MAJOR bump is
+# labelled "breaking" and will not pass the gate until its values are migrated
+# in the same PR (atomic migration). Auto-merge is opt-in via the AUTO_MERGE_STAGE
+# repo variable and only applies to non-breaking bumps.
+
+on:
+  repository_dispatch:
+    types: [chart-released]
+  workflow_dispatch:
+    inputs:
+      app:
+        description: App name (e.g. podinfo)
+        required: true
+      version:
+        description: Chart version, semver without app prefix (e.g. 6.15.0)
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  promote-stage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install yq
+        run: |
+          sudo curl -fsSL -o /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Resolve app/version
+        id: in
+        env:
+          APP: ${{ github.event.client_payload.app || inputs.app }}
+          VERSION: ${{ github.event.client_payload.version || inputs.version }}
+        run: |
+          set -euo pipefail
+          [ -n "${APP:-}" ] && [ -n "${VERSION:-}" ] || { echo "::error::app and version are required"; exit 1; }
+          echo "app=$APP" >> "$GITHUB_OUTPUT"
+          echo "tag=${APP}-${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Bump stage targetRevision
+        id: bump
+        env:
+          APP: ${{ steps.in.outputs.app }}
+          TAG: ${{ steps.in.outputs.tag }}
+        run: |
+          set -euo pipefail
+          old=$(yq ".spec.generators[0].list.elements[] | select(.appName==\"$APP\" and .environment==\"stage\") | .targetRevision" bootstrap/appset-apps.yaml | head -1)
+          [ -n "$old" ] && [ "$old" != "null" ] || { echo "::error::no stage element for app '$APP'"; exit 1; }
+          if [ "$old" = "$TAG" ]; then echo "::notice::stage already at $TAG; nothing to do"; echo "noop=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+
+          old_major=$(printf '%s' "${old#"$APP"-}" | cut -d. -f1)
+          new_major=$(printf '%s' "${TAG#"$APP"-}" | cut -d. -f1)
+          class=minor-or-patch
+          if printf '%s' "$old" | grep -Eq "^${APP}-[0-9]+\." && [ "$new_major" != "$old_major" ]; then class=major; fi
+
+          yq -i "(.spec.generators[0].list.elements[] | select(.appName==\"$APP\" and .environment==\"stage\") | .targetRevision) = \"$TAG\"" bootstrap/appset-apps.yaml
+
+          echo "old=$old" >> "$GITHUB_OUTPUT"
+          echo "class=$class" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "Automated **stage** promotion of \`$APP\`: \`$old\` -> \`$TAG\`."
+            echo ""
+            echo "Bump class: **$class**."
+            echo ""
+            if [ "$class" = "major" ]; then
+              echo "> [!WARNING]"
+              echo "> MAJOR bump = breaking values change. You MUST migrate"
+              echo "> \`clusters/<stage>/apps/$APP.yaml\` in this PR. The render gate will"
+              echo "> fail until the values match the new chart structure."
+            else
+              echo "Backward-compatible bump. The render gate validates the rendered output."
+            fi
+          } > pr-body.md
+
+      - name: Open stage promotion PR
+        if: steps.bump.outputs.noop != 'true'
+        id: cpr
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: promote/${{ steps.in.outputs.app }}-stage-${{ steps.in.outputs.tag }}
+          title: "promote(stage): ${{ steps.in.outputs.app }} ${{ steps.bump.outputs.old }} -> ${{ steps.in.outputs.tag }}"
+          commit-message: "promote(stage): ${{ steps.in.outputs.app }} -> ${{ steps.in.outputs.tag }}"
+          body-path: pr-body.md
+          labels: "${{ steps.bump.outputs.class == 'major' && 'breaking: values migration required' || 'promotion: stage' }}"
+
+      - name: Enable auto-merge (non-breaking only, opt-in)
+        if: steps.bump.outputs.noop != 'true' && steps.bump.outputs.class != 'major' && vars.AUTO_MERGE_STAGE == 'true' && steps.cpr.outputs.pull-request-number != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr merge --auto --squash "${{ steps.cpr.outputs.pull-request-number }}" || true

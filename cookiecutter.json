@@ -11,6 +11,11 @@
   "cluster_stage": "cluster-stage",
   "cluster_prod": "cluster-prod",
   "github_username": "your-org-or-username",
+  "_copy_without_render": [
+    ".github/workflows/*",
+    ".github/actions/*",
+    ".github/scripts/*"
+  ],
   "__prompts__": {
     "cluster_dev": "Name of the dev cluster (as registered in Argo CD)",
     "cluster_stage": "Name of the stage cluster (as registered in Argo CD)",
