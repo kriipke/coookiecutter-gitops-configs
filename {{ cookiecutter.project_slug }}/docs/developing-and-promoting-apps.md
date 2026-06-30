@@ -1,0 +1,202 @@
+# Developing & Promoting Apps
+
+This guide covers the day-to-day workflow on the {{ cookiecutter.platform_name }}
+platform: developing an application on dev, adding a brand-new application, and
+promoting changes from dev -> stage -> prod. Read
+[How It Works](how-it-works.md) first if you have not.
+
+## The mental model: two things you promote
+
+A deployment is the combination of a **chart version** and a **values file**. You
+promote each one independently:
+
+| What | Lives in | Promote by |
+| --- | --- | --- |
+| Chart version | `bootstrap/appset-apps.yaml` (`targetRevision` per element) | Releasing a tag in `{{ cookiecutter.repo_charts }}`, then moving the tag forward for stage, then for prod. |
+| Configuration (values) | `clusters/<cluster>/apps/<appName>.yaml` | Changing it on stage first, then applying the **same** change to prod. `{{ cookiecutter.cluster_stage }}` and `{{ cookiecutter.cluster_prod }}` are kept identical (see below); `{{ cookiecutter.cluster_dev }}` is independent. |
+
+The environments form a ladder:
+
+| Environment | Chart revision | Intent |
+| --- | --- | --- |
+| `{{ cookiecutter.cluster_dev }}` | `main` (branch) | Always-latest, lightweight iteration profile (single replica, debug logs, no autoscaling). Chart changes appear here automatically. |
+| `{{ cookiecutter.cluster_stage }}` | pinned tag (ahead of prod) | Soak a release on the **exact prod values** before it reaches prod. |
+| `{{ cookiecutter.cluster_prod }}` | pinned tag | Only proven releases. |
+
+**Promotion ladder — a release moves dev -> stage -> prod**
+
+```mermaid
+flowchart LR
+  rel["Chart release<br/>&lt;app&gt;-&lt;semver&gt;"]
+  dev(["{{ cookiecutter.cluster_dev }}<br/>tracks main — automatic"])
+  stage(["{{ cookiecutter.cluster_stage }}<br/>pinned tag — soak"])
+  prod(["{{ cookiecutter.cluster_prod }}<br/>pinned tag"])
+
+  rel -->|"on main"| dev
+  dev -->|"promote: bump stage tag"| stage
+  stage -->|"promote: bump prod tag (manual)"| prod
+  stage <-.->|"values identical (lockstep)"| prod
+```
+
+Values-wise there are really two profiles, not three:
+`{{ cookiecutter.cluster_dev }}` is a deliberately small iteration profile, while
+`{{ cookiecutter.cluster_stage }}` and `{{ cookiecutter.cluster_prod }}` share an
+identical production profile so stage genuinely tests what prod runs.
+
+## Develop on dev
+
+`{{ cookiecutter.cluster_dev }}` tracks the charts repo's `main` branch, so the
+fast loop is:
+
+1. Make chart changes in `{{ cookiecutter.repo_charts }}` and merge them to
+  `main`.
+1. Argo CD syncs the new chart to dev automatically (no change needed in this
+  repo).
+1. Tune dev behaviour by editing
+  `clusters/{{ cookiecutter.cluster_dev }}/apps/<appName>.yaml` and committing.
+
+To change **only** configuration (replicas, log level, resources, UI, ...) without
+a new chart, just edit the dev values file - the chart revision stays `main`.
+
+## Add a brand-new application
+
+Say you want to add an app called `myapp`.
+
+1. **Create the chart** in `{{ cookiecutter.repo_charts }}` at `charts/myapp/`, and
+  cut release tags for the environments that pin one (for example
+  `myapp-1.0.0`).
+1. **Add one element per cluster** to the `list` generator in
+  `bootstrap/appset-apps.yaml`:
+
+    ```yaml
+    - appName: myapp
+      cluster: {{ cookiecutter.cluster_dev }}
+      environment: dev
+      releaseName: myapp-dev
+      targetRevision: main
+    - appName: myapp
+      cluster: {{ cookiecutter.cluster_stage }}
+      environment: stage
+      releaseName: myapp-stage
+      targetRevision: myapp-1.0.0
+    - appName: myapp
+      cluster: {{ cookiecutter.cluster_prod }}
+      environment: prod
+      releaseName: myapp-prod
+      targetRevision: myapp-1.0.0
+    ```
+1. **Add a values file for every cluster** (required - `ignoreMissingValueFiles` is
+  `false` for apps):
+
+    ```text
+    clusters/{{ cookiecutter.cluster_dev }}/apps/myapp.yaml
+    clusters/{{ cookiecutter.cluster_stage }}/apps/myapp.yaml
+    clusters/{{ cookiecutter.cluster_prod }}/apps/myapp.yaml
+    ```
+
+    > [!NOTE]
+    > Make the `{{ cookiecutter.cluster_stage }}` and `{{ cookiecutter.cluster_prod }}`
+    > values **identical** so stage soaks the real prod config; the
+    > `{{ cookiecutter.cluster_dev }}` file can be a lighter profile.
+1. **Commit and push** to `{{ cookiecutter.repo_appsets_branch }}`. The
+  `applications` `ApplicationSet` generates `myapp-dev`, `myapp-stage`, and
+  `myapp-prod`, and Argo CD syncs them.
+
+## Promote a chart version (dev -> stage -> prod)
+
+This is the core release flow. dev already runs `main`, so promotion is about
+moving stage and prod onto a released tag.
+
+> [!NOTE]
+> This is CI-assisted. A chart release auto-opens the stage PR, and a manual
+> workflow opens the prod PR; a render gate validates every change before it
+> merges. The steps below are the manual equivalent. Crucially, when an upgrade
+> changes the chart's values **structure** (a MAJOR version), you must migrate the
+> values file in the **same** PR or the gate blocks it - see
+> [Promoting Chart Upgrades Safely](promoting-chart-upgrades.md).
+
+1. **Cut a release tag** in `{{ cookiecutter.repo_charts }}` from a known-good
+  commit (the one validated on dev), for example `podinfo-6.15.0`.
+1. **Promote to stage** - in `bootstrap/appset-apps.yaml`, bump the stage element's
+  `targetRevision` to the new tag:
+
+    ```diff
+      - appName: podinfo
+        cluster: {{ cookiecutter.cluster_stage }}
+        environment: stage
+        releaseName: podinfo-stage
+    -   targetRevision: podinfo-6.14.0
+    +   targetRevision: podinfo-6.15.0
+    ```
+    Commit, push, and let it soak. Verify `podinfo-stage` is healthy in Argo CD.
+1. **Promote to prod** - once stage looks good, bump the prod element's
+  `targetRevision` to the **same** tag:
+
+    ```diff
+      - appName: podinfo
+        cluster: {{ cookiecutter.cluster_prod }}
+        environment: prod
+        releaseName: podinfo-prod
+    -   targetRevision: podinfo-6.13.0
+    +   targetRevision: podinfo-6.15.0
+    ```
+    Commit and push. Argo CD rolls prod onto the proven release.
+
+Keep stage at least one release ahead of prod so there is always a soak step.
+
+## Promote configuration changes
+
+Configuration changes ride the ladder in the per-cluster values files instead of
+the appset. Because `{{ cookiecutter.cluster_stage }}` runs the **exact** prod
+values, promoting a prod config change is a straight copy with no per-environment
+scaling to adjust:
+
+1. Make the change in
+  `clusters/{{ cookiecutter.cluster_stage }}/apps/<appName>.yaml` and let it
+  soak. Verify the app is healthy in Argo CD.
+1. Once stage looks good, apply the **identical** change to
+  `clusters/{{ cookiecutter.cluster_prod }}/apps/<appName>.yaml`.
+
+Keep these two files in sync - drift between them means stage is no longer
+testing what prod runs. A quick guard:
+
+```bash
+diff clusters/{{ cookiecutter.cluster_stage }}/apps/<appName>.yaml \
+     clusters/{{ cookiecutter.cluster_prod }}/apps/<appName>.yaml
+```
+
+The only expected differences are environment identity (for example the
+`ui.message`), not sizing, autoscaling, or hardening. CI runs this same check
+(the stage/prod lockstep job) on every PR and **blocks the PR** on drift by
+default, so divergence cannot slip through (relax it to warn-only with the
+`STAGE_PROD_LOCKSTEP_BLOCKING` repo variable - see
+[Promoting Chart Upgrades Safely](promoting-chart-upgrades.md)).
+
+`{{ cookiecutter.cluster_dev }}` is the exception: it is a lightweight iteration
+profile and is tuned independently, so you can change it freely without touching
+stage or prod.
+
+## Rollback
+
+Because every environment's state is a Git commit, rollback is a revert:
+
+- **Chart version** - set the affected element's `targetRevision` back to the
+  previous tag in `bootstrap/appset-apps.yaml` and push. (For dev, revert the
+  offending commit on the charts repo's `main`.)
+- **Configuration** - `git revert` the values commit, or edit the values file back
+  to the known-good state and push.
+
+Self-heal and auto-sync mean the cluster converges to whatever Git says, so the
+recovery action is always "make Git correct again".
+
+## Quick reference
+
+| Task | Action |
+| --- | --- |
+| Change dev to latest chart | Merge to `main` in `{{ cookiecutter.repo_charts }}` (automatic). |
+| Change prod config | Edit the stage values file, soak, then apply the same change to prod (kept in lockstep). |
+| Change dev config | Edit `clusters/{{ cookiecutter.cluster_dev }}/apps/<appName>.yaml` (independent, lighter profile). |
+| Promote a release to stage | Bump the stage element's `targetRevision` in `bootstrap/appset-apps.yaml`. |
+| Promote a release to prod | Bump the prod element's `targetRevision` to the same tag. |
+| Add a new app | Add 3 elements to `bootstrap/appset-apps.yaml` + 3 values files under `clusters/`, and create the chart in `{{ cookiecutter.repo_charts }}`. |
+| Roll back | Revert the `targetRevision` or values commit in Git. |

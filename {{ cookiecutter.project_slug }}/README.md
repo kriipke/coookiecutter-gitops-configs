@@ -1,0 +1,156 @@
+# {{ cookiecutter.project_name }} ({{ cookiecutter.platform_name }})
+
+This repository is the **single source of truth** for the Argo CD GitOps
+configuration of the {{ cookiecutter.platform_name }} Kubernetes platform.
+
+It defines how Argo CD bootstraps itself, which applications and add-ons are
+deployed to which clusters, and the per-cluster Helm values used for each
+deployment.
+
+It is hosted at:
+
+https://github.com/{{ cookiecutter.repo_appsets }}
+
+## Documentation
+
+In-depth docs live under `docs/`:
+
+- [How It Works](docs/how-it-works.md) - architecture, the bootstrap flow,
+  the two `ApplicationSet` resources, and multi-source applications.
+- [Developing & Promoting Apps](docs/developing-and-promoting-apps.md) - the
+  workflow for developing apps and promoting them from dev to prod.
+- [Promoting Chart Upgrades Safely](docs/promoting-chart-upgrades.md) - the
+  CI render gate, the SemVer contract, and how to handle chart upgrades that
+  change the values structure.
+- [Tutorial Simplifications & Production
+  Notes](docs/tutorial-simplifications.md) - what this base template deliberately simplifies (add-on CI scope, the
+  helper scripts, bootstrap sync, the `default` project, cluster naming) and how
+  to harden each for production.
+
+## CI/CD Setup (one-time)
+
+The CI under `.github/` (a render gate plus dev -> stage -> prod promotion) needs
+two one-time setup steps before it works. Full details, including the workflow
+snippet, are in [Promoting Chart Upgrades Safely](docs/promoting-chart-upgrades.md).
+
+1. **Add secrets and settings.**
+
+    | Where | What | Purpose |
+    | --- | --- | --- |
+    | this repo (`{{ cookiecutter.repo_appsets }}`) | secret `CHARTS_DEPLOY_KEY` | Read-only SSH deploy key on `{{ cookiecutter.repo_charts }}` so CI can clone a chart at its pinned tag to render it. |
+    | charts repo (`{{ cookiecutter.repo_charts }}`) | secret `PROMOTE_DISPATCH_TOKEN` | PAT / GitHub App token with `contents:write` on `{{ cookiecutter.repo_appsets }}` so a chart release can trigger stage promotion (the default `GITHUB_TOKEN` cannot dispatch across repos). |
+    | this repo (setting) | *Allow GitHub Actions to create and approve pull requests* | Lets the promotion workflows open PRs (Settings -> Actions -> General). |
+    | this repo (setting) | Branch protection on `{{ cookiecutter.repo_appsets_branch }}` | Require the `render-gate` status check and Code Owners review (see `.github/CODEOWNERS`) so prod promotion is a true manual gate. |
+
+2. **Copy the charts-repo workflow.** Add the `release.yml` snippet from
+   [Promoting Chart Upgrades Safely](docs/promoting-chart-upgrades.md) to
+   `{{ cookiecutter.repo_charts }}` at `.github/workflows/release.yml`, replacing
+   the `OWNER/APPSETS_REPO` placeholder with `{{ cookiecutter.repo_appsets }}`. It
+   enforces the SemVer contract, tags releases as `<app>-<version>`, and notifies
+   this repo to promote.
+
+## Repository Layout
+
+```text
+bootstrap.yaml              # (1)
+bootstrap/
+  appset-apps.yaml          # (2)
+  appset-addons.yaml        # (3)
+clusters/
+  {{ cookiecutter.cluster_dev }}/
+    apps/                   # (4)
+    addons/                 # (5)
+  {{ cookiecutter.cluster_stage }}/
+    apps/
+    addons/
+  {{ cookiecutter.cluster_prod }}/
+    apps/
+    addons/
+docs/                       # (6)
+.github/                    # (7)
+```
+
+1. **(1)** Root Argo CD `Application` that points Argo CD at the `bootstrap/` directory.
+2. **(2)** `ApplicationSet` that deploys platform workload applications.
+3. **(3)** `ApplicationSet` that deploys cluster add-ons.
+4. **(4)** Per-cluster Helm values for applications.
+5. **(5)** Per-cluster Helm values for add-ons.
+6. **(6)** Documentation: how the repo works and how to develop and promote apps.
+7. **(7)** CI: render-gate and promotion workflows (see `docs/promoting-chart-upgrades.md`).
+
+## How It Works
+
+`bootstrap.yaml` is an Argo CD `Application` that recursively syncs the
+`bootstrap/` directory of this repository. Applying it once is enough for
+Argo CD to discover and manage everything else:
+
+```bash
+kubectl apply -n {{ cookiecutter.argo_namespace }} -f bootstrap.yaml
+```
+
+**From one apply to running workloads**
+
+```mermaid
+flowchart TD
+  apply["kubectl apply bootstrap.yaml"] --> boot(["bootstrap (Application)"])
+  boot -->|"syncs bootstrap/ recursively"| apps["applications (ApplicationSet)"]
+  boot --> addons["addons (ApplicationSet)"]
+
+  apps --> pdev["podinfo-dev"]
+  apps --> pstage["podinfo-stage"]
+  apps --> pprod["podinfo-prod"]
+  addons --> ms["metrics-server (every cluster)"]
+
+  pdev --> cdev(["{{ cookiecutter.cluster_dev }}<br/>chart revision: main"])
+  pstage --> cstage(["{{ cookiecutter.cluster_stage }}<br/>chart revision: pinned tag (ahead of prod)"])
+  pprod --> cprod(["{{ cookiecutter.cluster_prod }}<br/>chart revision: pinned tag"])
+  ms --> cdev
+  ms --> cstage
+  ms --> cprod
+```
+
+The `bootstrap/` directory contains two `ApplicationSet` resources:
+
+- `appset-apps.yaml` - deploys the platform applications to every cluster, with
+  a per-cluster chart revision: `{{ cookiecutter.cluster_dev }}` tracks the
+  charts repo's `main` branch, while `{{ cookiecutter.cluster_stage }}` and
+  `{{ cookiecutter.cluster_prod }}` pin released tags (stage is kept ahead of
+  prod, so changes soak in stage before they are promoted to prod).
+- `appset-addons.yaml` - deploys cluster add-ons (metrics-server) to every
+  cluster, pinned to the same versions everywhere.
+
+Both `ApplicationSet` resources use Argo CD multi-source applications: the
+per-cluster values come from this repository (under `clusters/`), while the
+chart comes from a separate source - the private Helm chart repository for
+applications, or each add-on's upstream public Helm repository.
+
+## Helm Charts
+
+Application charts are sourced from the private Helm chart repository:
+
+https://github.com/{{ cookiecutter.repo_charts }}
+
+Add-on charts are pulled directly from their upstream public Helm repositories
+(for example metrics-server), so they do not depend on the private chart
+repository.
+
+## Per-Cluster Values
+
+Each registered cluster has a directory under `clusters/` containing:
+
+- `apps/` - Helm values for applications (for example `podinfo.yaml`).
+- `addons/` - Helm values for cluster add-ons (for example `metrics-server.yaml`).
+
+Each `ApplicationSet` targets clusters **by name** - the cluster's registered
+name in Argo CD (`{{ cookiecutter.cluster_dev }}`, `{{ cookiecutter.cluster_stage }}`,
+`{{ cookiecutter.cluster_prod }}`) - and reads that cluster's values directory
+under `clusters/<cluster>/`.
+
+## Repository References
+
+| Setting | Value |
+| --- | --- |
+| ApplicationSet / values repository | `{{ cookiecutter.repo_appsets }}` |
+| Helm chart repository (applications) | `{{ cookiecutter.repo_charts }}` |
+| Tracked branch | `{{ cookiecutter.repo_appsets_branch }}` |
+| Argo CD namespace | `{{ cookiecutter.argo_namespace }}` |

@@ -3,7 +3,7 @@
 #
 # Production profile: highly available, autoscaled, observable, and hardened.
 # This is the most conservative rung on the dev -> stage -> prod ladder
-# (see docs/developing-and-promoting-apps.adoc).
+# (see docs/developing-and-promoting-apps.md).
 
 # Floor for the HPA. Three replicas survive a single pod/node loss.
 replicaCount: 3

@@ -1,39 +1,29 @@
-= How It Works
+# How It Works
 
 This repository is the GitOps configuration layer for the
 {{ cookiecutter.platform_name }} Kubernetes platform. It does not contain Helm
-charts or application source code - it describes *what* should run *where*, and
+charts or application source code - it describes **what** should run **where**, and
 points Argo CD at the charts and values needed to make that happen.
 
-== The two-repository model
+## The two-repository model
 
 The setup is deliberately split across two repositories:
 
-[cols="1,3",options="header"]
-|===
-| Repository | Role
+| Repository | Role |
+| --- | --- |
+| `{{ cookiecutter.repo_appsets }}` (this repo) | **Configuration.** Holds the `ApplicationSet` resources (under `bootstrap/`) and the per-cluster Helm values (under `clusters/`). This is the single source of truth for which apps and add-ons run on which clusters. |
+| `{{ cookiecutter.repo_charts }}` | **Application charts.** A private Helm chart repository. Each application has a chart under `charts/<appName>/`. Releases are cut as Git tags (for example `podinfo-6.14.0`). |
 
-| `{{ cookiecutter.repo_appsets }}` (this repo)
-| *Configuration.* Holds the `ApplicationSet` resources (under `bootstrap/`) and
-  the per-cluster Helm values (under `clusters/`). This is the single source of
-  truth for which apps and add-ons run on which clusters.
-
-| `{{ cookiecutter.repo_charts }}`
-| *Application charts.* A private Helm chart repository. Each application has a
-  chart under `charts/<appName>/`. Releases are cut as Git tags
-  (for example `podinfo-6.14.0`).
-|===
-
-Add-on charts (for example `metrics-server`) are *not* pulled from either repo -
+Add-on charts (for example `metrics-server`) are **not** pulled from either repo -
 they come straight from their upstream public Helm repositories.
 
 Keeping config and charts apart means a chart can be released independently, and
 a cluster's behaviour is changed by a reviewable commit in this repo rather than
 by mutating anything in place.
 
-.The two-repository model
-[mermaid]
-----
+**The two-repository model**
+
+```mermaid
 flowchart LR
   subgraph cfg["Configuration — {{ cookiecutter.repo_appsets }} (this repo)"]
     a1["bootstrap/ — ApplicationSets"]
@@ -49,21 +39,19 @@ flowchart LR
   a2 -.->|"values"| argo
   c1 -.->|"app chart"| argo
   upstream -.->|"add-on chart"| argo
-----
+```
 
-== The bootstrap flow
+## The bootstrap flow
 
 Argo CD is brought online with a single, one-time `kubectl apply`:
 
-[source,sh]
-----
+```bash
 kubectl apply -n {{ cookiecutter.argo_namespace }} -f bootstrap.yaml
-----
+```
 
 From there, everything is reconciled from Git:
 
-[source,text]
-----
+```text
   kubectl apply
   bootstrap.yaml
         |
@@ -81,22 +69,21 @@ From there, everything is reconciled from Git:
   podinfo-dev   -> {{ cookiecutter.cluster_dev }}      metrics-server-* -> every cluster
   podinfo-stage -> {{ cookiecutter.cluster_stage }}
   podinfo-prod  -> {{ cookiecutter.cluster_prod }}
-----
+```
 
-* `bootstrap.yaml` is an Argo CD `Application` that recursively syncs the
+- `bootstrap.yaml` is an Argo CD `Application` that recursively syncs the
   `bootstrap/` directory of this repo onto the control-plane cluster
   (`in-cluster`, namespace `{{ cookiecutter.argo_namespace }}`). It is the only
   thing applied by hand.
-* `bootstrap/` contains the two `ApplicationSet` resources below. Argo CD picks
+- `bootstrap/` contains the two `ApplicationSet` resources below. Argo CD picks
   them up and each one generates the actual `Application` objects.
 
-== `bootstrap/appset-apps.yaml` - applications
+## `bootstrap/appset-apps.yaml` - applications
 
 A `list` generator with one explicit element per `(app x cluster)`. Each element
 carries everything that makes that placement unique:
 
-[source,yaml]
-----
+```yaml
 - appName: podinfo
   cluster: {{ cookiecutter.cluster_dev }}
   environment: dev
@@ -112,13 +99,13 @@ carries everything that makes that placement unique:
   environment: prod
   releaseName: podinfo-prod
   targetRevision: podinfo-6.13.0  # pinned release tag (kept behind stage)
-----
+```
 
 The key idea is the per-element `targetRevision`:
 
-* `{{ cookiecutter.cluster_dev }}` tracks the charts repo's `main` branch, so it
+- `{{ cookiecutter.cluster_dev }}` tracks the charts repo's `main` branch, so it
   always runs the latest chart - this is where you see changes first.
-* `{{ cookiecutter.cluster_stage }}` and `{{ cookiecutter.cluster_prod }}` pin
+- `{{ cookiecutter.cluster_stage }}` and `{{ cookiecutter.cluster_prod }}` pin
   released tags. Stage is kept *ahead of* prod so a release can soak in stage
   before it is promoted to prod.
 
@@ -126,29 +113,29 @@ Each generated `Application` is named `<appName>-<environment>` (e.g.
 `podinfo-dev`) and is deployed into the `<environment>-targetns` namespace
 (`dev-targetns`, `stage-targetns`, `prod-targetns`) on the named cluster.
 
-== `bootstrap/appset-addons.yaml` - cluster add-ons
+## `bootstrap/appset-addons.yaml` - cluster add-ons
 
 A `matrix` generator that crosses an add-on list with the cluster list, so every
-add-on is deployed to every cluster at the *same* version. The sample add-on is
+add-on is deployed to every cluster at the **same** version. The sample add-on is
 `metrics-server`, pulled from its upstream public Helm repo and installed into
 `kube-system`. Unlike applications, add-ons are not environment-versioned - they
 are platform plumbing that should be consistent everywhere.
 
-== Multi-source applications
+## Multi-source applications
 
 Both `ApplicationSet` resources use Argo CD multi-source applications. Every
 generated `Application` combines two sources:
 
-. *Values* - from this repository, at
+1. **Values** - from this repository, at
   `clusters/<cluster>/apps/<appName>.yaml` (apps) or
   `clusters/<cluster>/addons/<appName>.yaml` (add-ons).
-. *Chart* - from elsewhere: the private charts repo
+1. **Chart** - from elsewhere: the private charts repo
   (`{{ cookiecutter.repo_charts }}`, path `charts/<appName>`) for applications,
   or the add-on's upstream public Helm repo for add-ons.
 
-.A generated Application merges two sources
-[mermaid]
-----
+**A generated Application merges two sources**
+
+```mermaid
 flowchart LR
   thisrepo[("{{ cookiecutter.repo_appsets }}<br/>(values)")]
   chart[("Chart source<br/>{{ cookiecutter.repo_charts }} or upstream Helm repo")]
@@ -160,14 +147,13 @@ flowchart LR
   chart -.->|"chart @ targetRevision"| merge
   merge --> out
   out --> dest
-----
+```
 
 This is why the same chart can run on each cluster with different behaviour: the
 chart is shared, but every cluster reads its own values file. There are two
 profiles - a small dev profile and a production profile shared by stage and prod.
 
-[source,text]
-----
+```text
 clusters/
   {{ cookiecutter.cluster_dev }}/
     apps/podinfo.yaml        # 1 replica, debug logs, no HPA (iteration profile)
@@ -178,32 +164,32 @@ clusters/
   {{ cookiecutter.cluster_prod }}/
     apps/podinfo.yaml        # production profile: HA, autoscaled, hardened
     addons/metrics-server.yaml
-----
+```
 
 For applications, `ignoreMissingValueFiles` is `false` - a missing values file
 is an error, so every `(app x cluster)` element must have a matching file. For
 add-ons it is `true`, so a cluster can take chart defaults by simply not
 shipping a values file.
 
-== Clusters, namespaces, and destinations
+## Clusters, namespaces, and destinations
 
-* Clusters are targeted *by name* - the name each cluster is registered under in
+- Clusters are targeted *by name* - the name each cluster is registered under in
   Argo CD (`{{ cookiecutter.cluster_dev }}`, `{{ cookiecutter.cluster_stage }}`,
   `{{ cookiecutter.cluster_prod }}`). Those names must exist in Argo CD before
   the generated `Application` can sync.
-* Applications land in `<environment>-targetns`; add-ons land in the namespace
+- Applications land in `<environment>-targetns`; add-ons land in the namespace
   declared by the add-on (metrics-server -> `kube-system`).
 
-== Sync behaviour
+## Sync behaviour
 
 There are two distinct `syncPolicy` blocks, at two different levels, and they do
 different jobs:
 
-* `template.spec.syncPolicy` is the **generated `Application`'s** policy - it
+- `template.spec.syncPolicy` is the **generated `Application`'s** policy - it
   controls how that Application reconciles its workloads onto the cluster. This
   is where `automated: { prune: true, selfHeal: true }` lives, so drift is
   corrected and removed elements are cleaned up.
-* The `ApplicationSet`'s own top-level `syncPolicy` controls how the
+- The `ApplicationSet`'s own top-level `syncPolicy` controls how the
   `ApplicationSet` *controller* manages the generated `Application` **objects**
   (not their cluster workloads). The only field set here is
   `preserveResourcesOnDeletion: true`, which means deleting the set does not
@@ -213,10 +199,10 @@ different jobs:
 
 Other generated-Application sync options:
 
-* `CreateNamespace=true` creates the destination namespace on first sync.
-* `ServerSideApply=true` is used to apply large resources reliably.
+- `CreateNamespace=true` creates the destination namespace on first sync.
+- `ServerSideApply=true` is used to apply large resources reliably.
 
-== Validation & CI gates
+## Validation & CI gates
 
 Argo CD renders charts on its repo-server: it merges each cluster's values file
 with the chart pulled from its source. Before that ever happens, GitHub Actions
@@ -224,14 +210,14 @@ workflows under `.github/` reproduce the same render (`helm template` per
 app x cluster against the pinned chart) so a values/chart mismatch fails on the
 pull request instead of silently at sync. The same workflows automate
 dev -> stage -> prod promotion and enforce a SemVer contract for breaking values
-changes. See link:promoting-chart-upgrades.adoc[Promoting Chart Upgrades Safely].
+changes. See [Promoting Chart Upgrades Safely](promoting-chart-upgrades.md).
 
-== Where to go next
+## Where to go next
 
 To actually change what runs - edit values, add an app, or move a release from
-dev to prod - see link:developing-and-promoting-apps.adoc[Developing & Promoting Apps].
+dev to prod - see [Developing & Promoting Apps](developing-and-promoting-apps.md).
 
 This repo is a teaching base, so a few things are deliberately simplified (add-on
 CI scope, the helper scripts, bootstrap sync, the `default` project, by-name
 cluster targeting). Each is labelled, with production guidance, in
-link:tutorial-simplifications.adoc[Tutorial Simplifications & Production Notes].
+[Tutorial Simplifications & Production Notes](tutorial-simplifications.md).

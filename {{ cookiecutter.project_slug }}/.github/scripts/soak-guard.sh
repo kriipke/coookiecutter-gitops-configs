@@ -13,7 +13,7 @@
 # TEMPLATE ASSUMPTION: reads this repo's simple list generator
 # (.spec.generators[0].list.elements); it is not a generic ApplicationSet parser.
 # Switching generator types means updating this script. See
-# docs/tutorial-simplifications.adoc.
+# docs/tutorial-simplifications.md.
 set -euo pipefail
 
 app="${1:?usage: soak-guard.sh <app> <candidate-prod-tag> [appset]}"

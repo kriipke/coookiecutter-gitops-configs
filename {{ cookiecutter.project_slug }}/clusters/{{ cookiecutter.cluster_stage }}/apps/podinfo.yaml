@@ -4,7 +4,7 @@
 # Stage mirrors the prod profile exactly (sizing, autoscaling, PDB, topology
 # spread, probes, security context, observability) so it is a true pre-prod
 # soak: what passes here is what ships to prod. Only the environment identity
-# (the ui.message) differs. (See docs/developing-and-promoting-apps.adoc.)
+# (the ui.message) differs. (See docs/developing-and-promoting-apps.md.)
 
 # Floor for the HPA. Three replicas survive a single pod/node loss.
 replicaCount: 3
