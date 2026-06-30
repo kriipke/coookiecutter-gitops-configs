@@ -1,4 +1,0 @@
-# cert-manager values - https://charts.jetstack.io (chart v1.20.3)
-crds:
-  enabled: true   # install/upgrade the cert-manager CRDs with the chart
-  keep: true      # keep CRDs (and your Certificates/Issuers) if this app is removed

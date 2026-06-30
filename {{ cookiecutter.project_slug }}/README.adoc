@@ -54,9 +54,8 @@ The `bootstrap/` directory contains two `ApplicationSet` resources:
   charts repo's `main` branch, while `{{ cookiecutter.cluster_stage }}` and
   `{{ cookiecutter.cluster_prod }}` pin released tags (stage is kept ahead of
   prod, so changes soak in stage before they are promoted to prod).
-* `appset-addons.yaml` - deploys cluster add-ons (cert-manager,
-  external-secrets, metrics-server) to every cluster, pinned to the same
-  versions everywhere.
+* `appset-addons.yaml` - deploys cluster add-ons (metrics-server) to every
+  cluster, pinned to the same versions everywhere.
 
 Both `ApplicationSet` resources use Argo CD multi-source applications: the
 per-cluster values come from this repository (under `clusters/`), while the
@@ -70,16 +69,15 @@ Application charts are sourced from the private Helm chart repository:
 https://github.com/{{ cookiecutter.repo_charts }}
 
 Add-on charts are pulled directly from their upstream public Helm repositories
-(for example cert-manager, external-secrets, metrics-server), so they do not
-depend on the private chart repository.
+(for example metrics-server), so they do not depend on the private chart
+repository.
 
 == Per-Cluster Values
 
 Each registered cluster has a directory under `clusters/` containing:
 
 * `apps/` - Helm values for applications (for example `podinfo.yaml`).
-* `addons/` - Helm values for cluster add-ons (for example `cert-manager.yaml`,
-  `external-secrets.yaml`).
+* `addons/` - Helm values for cluster add-ons (for example `metrics-server.yaml`).
 
 Each `ApplicationSet` targets clusters **by name** - the cluster's registered
 name in Argo CD (`{{ cookiecutter.cluster_dev }}`, `{{ cookiecutter.cluster_stage }}`,

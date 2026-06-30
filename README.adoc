@@ -19,8 +19,6 @@ The template creates a GitOps repository with this shape (cluster directory name
   clusters/
     cluster-dev/
       addons/
-        cert-manager.yaml
-        external-secrets.yaml
         metrics-server.yaml
       apps/
         podinfo.yaml
@@ -36,11 +34,11 @@ Key generated files:
 
 * `bootstrap.yaml` - an Argo CD `Application` that recursively syncs the generated `bootstrap/` directory.
 * `bootstrap/appset-apps.yaml` - an `ApplicationSet` (list generator) for workload applications. It ships one entry per (app x cluster) and pins a chart revision per cluster: dev tracks the chart repo's `main` branch, while stage and prod pin released tags (stage ahead of prod, so changes soak before promotion). The sample app is `podinfo`.
-* `bootstrap/appset-addons.yaml` - an `ApplicationSet` (matrix generator) for cluster add-ons, deployed at the same version to every cluster. The sample add-ons are `cert-manager`, `external-secrets`, and `metrics-server`.
+* `bootstrap/appset-addons.yaml` - an `ApplicationSet` (matrix generator) for cluster add-ons, deployed at the same version to every cluster. The sample add-on is `metrics-server`.
 * `clusters/<cluster>/apps/*.yaml` - per-cluster Helm values for applications.
 * `clusters/<cluster>/addons/*.yaml` - per-cluster Helm values for platform add-ons.
 
-Both `ApplicationSet` resources use Argo CD multi-source applications: per-cluster values come from this GitOps repository (under `clusters/`), while the chart comes from a separate source. Application charts are pulled from the private chart repository (`repo_charts`); add-on charts are pulled from each add-on's upstream public Helm repository (for example `https://charts.jetstack.io` for cert-manager).
+Both `ApplicationSet` resources use Argo CD multi-source applications: per-cluster values come from this GitOps repository (under `clusters/`), while the chart comes from a separate source. Application charts are pulled from the private chart repository (`repo_charts`); add-on charts are pulled from each add-on's upstream public Helm repository (for example `https://kubernetes-sigs.github.io/metrics-server/` for metrics-server).
 
 The generated repository ships with its own `README.adoc` documenting the rendered layout.
 

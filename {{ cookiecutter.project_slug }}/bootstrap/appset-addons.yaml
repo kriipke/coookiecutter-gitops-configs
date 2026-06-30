@@ -16,18 +16,6 @@ spec:
           # the add-on charts (public Helm repos), same versions on every cluster
           - list:
               elements:
-              - appName: cert-manager
-                chartRepoURL: https://charts.jetstack.io
-                chartName: cert-manager
-                releaseName: cert-manager
-                namespace: cert-manager
-                targetRevision: v1.20.3
-              - appName: external-secrets
-                chartRepoURL: https://charts.external-secrets.io
-                chartName: external-secrets
-                releaseName: external-secrets
-                namespace: external-secrets
-                targetRevision: 2.7.0
               - appName: metrics-server
                 chartRepoURL: https://kubernetes-sigs.github.io/metrics-server/
                 chartName: metrics-server
@@ -68,4 +56,4 @@ spec:
           selfHeal: true
         syncOptions:
           - CreateNamespace=true
-          - ServerSideApply=true  # required for cert-manager's large CRDs
+          - ServerSideApply=true
