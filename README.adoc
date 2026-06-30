@@ -1,4 +1,4 @@
-= coookiecutter-gitops-configs
+= cookiecutter-gitops-multirepo
 
 A Cookiecutter template for generating an Argo CD GitOps configuration repository.
 
@@ -114,7 +114,7 @@ Or run it directly from GitHub:
 
 [source,sh]
 ----
-cookiecutter gh:kriipke/coookiecutter-gitops-configs
+cookiecutter gh:kriipke/cookiecutter-gitops-multirepo
 ----
 
 Cookiecutter writes the generated repository into the selected `project_slug` directory.
